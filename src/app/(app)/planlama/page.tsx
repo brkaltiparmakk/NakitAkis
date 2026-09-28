@@ -11,7 +11,7 @@ import {
 import { Button, Card, Empty, Field, Input, Money, PageHeader, Select } from "@/components/ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { getAccounts, getCategories, getOpenReceivables } from "@/lib/data";
+import { autoAverageAmounts, getAccounts, getCategories, getOpenReceivables } from "@/lib/data";
 import { addMonths, formatTr, todayIso } from "@/lib/dates";
 import { toNum } from "@/lib/money";
 
@@ -32,6 +32,8 @@ export default async function PlanningPage() {
   const today = todayIso();
   const accName = new Map(accounts.map((a) => [a.id, a.name]));
   const catName = new Map(categories.map((c) => [c.id, c.name]));
+  const autoAmounts = await autoAverageAmounts(user.id, recurring, today);
+  const amountOf = (r: (typeof recurring)[number]) => autoAmounts.get(r.id) ?? toNum(r.amount);
 
   const accountSelect = (defaultValue?: string | null) => (
     <Select name="accountId" defaultValue={defaultValue ?? ""}>
@@ -70,8 +72,8 @@ export default async function PlanningPage() {
           <option value="out">Çıkış (gider)</option>
         </Select>
       </Field>
-      <Field label="Tutar (₺)">
-        <Input name="amount" inputMode="decimal" required defaultValue={r ? String(toNum(r.amount)).replace(".", ",") : undefined} />
+      <Field label="Tutar (₺)" hint="12 ay ortalaması seçiliyse boş bırakılabilir">
+        <Input name="amount" inputMode="decimal" defaultValue={r ? String(toNum(r.amount)).replace(".", ",") : undefined} />
       </Field>
       <Field label="Sıklık">
         <Select name="frequency" defaultValue={r?.frequency ?? "monthly"}>
@@ -99,6 +101,10 @@ export default async function PlanningPage() {
       <Field label="Başlangıç"><Input name="startDate" type="date" defaultValue={r?.startDate ?? today} /></Field>
       <Field label="Bitiş (isteğe bağlı)"><Input name="endDate" type="date" defaultValue={r?.endDate ?? undefined} /></Field>
       <Field label="Hesap">{accountSelect(r?.accountId)}</Field>
+      <label className="flex items-center gap-2 text-sm sm:col-span-2">
+        <input type="checkbox" name="autoAverage" defaultChecked={r?.autoAverage ?? false} />
+        Tutarı kategorinin son 12 aylık ortalamasından otomatik hesapla (kategori seçili olmalı)
+      </label>
     </>
   );
 
@@ -139,7 +145,10 @@ export default async function PlanningPage() {
                       {r.endDate ? ` – ${formatTr(r.endDate)}` : " →"}
                     </span>
                   </span>
-                  <Money value={r.direction === "in" ? toNum(r.amount) : -toNum(r.amount)} signed />
+                  <span className="text-right">
+                    <Money value={r.direction === "in" ? amountOf(r) : -amountOf(r)} signed />
+                    {r.autoAverage && <span className="block text-xs text-muted">12 ay ortalaması</span>}
+                  </span>
                 </summary>
                 <form action={saveRecurring} className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <input type="hidden" name="id" value={r.id} />

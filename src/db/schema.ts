@@ -181,6 +181,8 @@ export const recurringItems = pgTable("recurring_items", {
   accountId: uuid("account_id").references(() => accounts.id, { onDelete: "set null" }),
   categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
   active: boolean("active").notNull().default(true),
+  // true: tutar, kategorinin son 12 aylık ortalamasından her seferinde yeniden hesaplanır (amount yedek değerdir)
+  autoAverage: boolean("auto_average").notNull().default(false),
 });
 
 export const loans = pgTable("loans", {

@@ -9,7 +9,9 @@ import { int, isoDate, money, optStr, str } from "./util";
 
 export async function saveRecurring(f: FormData) {
   const user = await requireUser();
-  const amount = money(f, "amount");
+  // "12 ay ortalaması" seçiliyse tutar kategorinin geçmişinden hesaplanır; girilen tutar yalnızca yedek değerdir
+  const autoAverage = f.get("autoAverage") === "on" && !!optStr(f, "categoryId");
+  const amount = money(f, "amount") ?? (autoAverage ? "0" : null);
   if (amount === null) return;
   const frequency = ["monthly", "weekly", "yearly"].includes(str(f, "frequency")) ? str(f, "frequency") : "monthly";
   const values = {
@@ -24,6 +26,7 @@ export async function saveRecurring(f: FormData) {
     endDate: isoDate(f, "endDate"),
     accountId: optStr(f, "accountId"),
     categoryId: optStr(f, "categoryId"),
+    autoAverage,
   };
   const id = optStr(f, "id");
   if (id) {
@@ -82,7 +85,9 @@ export async function deleteLoan(f: FormData) {
 
 export async function saveReceivable(f: FormData) {
   const user = await requireUser();
-  const amount = money(f, "amount");
+  // "12 ay ortalaması" seçiliyse tutar kategorinin geçmişinden hesaplanır; girilen tutar yalnızca yedek değerdir
+  const autoAverage = f.get("autoAverage") === "on" && !!optStr(f, "categoryId");
+  const amount = money(f, "amount") ?? (autoAverage ? "0" : null);
   if (amount === null) return;
   const values = {
     name: str(f, "name") || "Alacak",

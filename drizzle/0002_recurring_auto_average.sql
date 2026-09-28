@@ -1,0 +1,1 @@
+ALTER TABLE "recurring_items" ADD COLUMN "auto_average" boolean DEFAULT false NOT NULL;

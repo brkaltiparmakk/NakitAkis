@@ -147,10 +147,10 @@ describe("project", () => {
 });
 
 describe("daily spending", () => {
-  it("takes the median of full months and ignores loans, interest, installments and uncategorized on checking", async () => {
+  it("averages the last 12 full months and ignores loans, interest, installments and uncategorized on checking", async () => {
     const { averageMonthlySpend } = await import("./spending");
     const txs = [
-      { date: "2026-05-20", amount: -999, kind: "expense", category: "Market" }, // pencere dışı
+      { date: "2025-08-20", amount: -999, kind: "expense", category: "Market" }, // 12 ay penceresi dışı
       { date: "2026-06-02", amount: -300, kind: "expense", category: "Market" },
       { date: "2026-07-10", amount: -600, kind: "expense", category: "Restoran / Kafe" },
       { date: "2026-08-05", amount: -900, kind: "expense", category: "Ulaşım / Yakıt" },
@@ -160,9 +160,10 @@ describe("daily spending", () => {
       { date: "2026-08-12", amount: -800, kind: "expense", category: "Alışveriş", installmentNo: 2 },
       { date: "2026-09-10", amount: -123, kind: "expense", category: "Market" }, // içinde bulunulan ay sayılmaz
     ];
-    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: false })).toBe(600);
-    // Ağustos'taki tek seferlik 7.000 ₺ medyanı değiştirmez (aylar: 300, 600, 7.900)
-    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(600);
+    // Veri Ağustos 2025'te başlıyor: Eylül 2025 – Ağustos 2026 = 12 tam ay; toplam 1.800 → 150/ay
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: false })).toBe(150);
+    // Kartta kategorisizler de sayılır: 8.800 / 12
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(733.33);
   });
 
   it("falls back to the last 30 days when there is no full month", async () => {
@@ -238,8 +239,8 @@ describe("findTransferPairs", () => {
   });
 });
 
-describe("median spending with two months", () => {
-  it("averages the two middle months", async () => {
+describe("monthly averages with short history", () => {
+  it("divides by the full months that have data", async () => {
     const { averageMonthlySpend } = await import("./spending");
     const txs = [
       { date: "2026-07-01", amount: -1000, kind: "expense", category: "Market" },
@@ -307,5 +308,21 @@ describe("cardOutstanding", () => {
     expect(cardOutstanding({ ...base, paymentMode: "minimum", unbilledSpend: 500, latestStatement: { statementDate: "2026-09-15", dueDate: "2026-09-30", totalDue: 10000, minDue: 2000 } }, "2026-09-28")).toBe(10500);
     // Son ödeme günü geçmiş, asgari ödenmiş: kalan 8.000 devreder
     expect(cardOutstanding({ ...base, paymentMode: "minimum", unbilledSpend: 0, latestStatement: { statementDate: "2026-08-15", dueDate: "2026-08-25", totalDue: 10000, minDue: 2000 } }, "2026-09-28")).toBe(8000);
+  });
+});
+
+describe("categoryMonthlyAverage", () => {
+  it("averages irregular income over the last 12 full months, counting empty months", async () => {
+    const { categoryMonthlyAverage } = await import("./spending");
+    const txs = [
+      { date: "2025-07-16", amount: 60000 }, // pencere dışı
+      { date: "2025-12-04", amount: 10000 },
+      { date: "2026-01-12", amount: 60000 },
+      { date: "2026-08-14", amount: 50000 },
+      { date: "2026-09-10", amount: 99999 }, // içinde bulunulan ay sayılmaz
+    ];
+    expect(categoryMonthlyAverage(txs, "in", "2024-10-01", "2026-09-28")).toBe(10000);
+    // Veri 6 ay önce başladıysa 6 aya bölünür
+    expect(categoryMonthlyAverage(txs, "in", "2026-03-01", "2026-09-28")).toBe(8333.33);
   });
 });

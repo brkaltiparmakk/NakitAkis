@@ -8,7 +8,7 @@ import { addDays, previousMonthlyDate, type ISODate } from "@/lib/dates";
 import { foldTr } from "@/lib/import/normalize";
 import { round2, toNum } from "@/lib/money";
 import type { CardInput, ProjectionInput } from "@/lib/projection";
-import { averageMonthlySpend, netSpend } from "@/lib/spending";
+import { averageMonthlySpend, categoryMonthlyAverage, netSpend } from "@/lib/spending";
 import { findTransferPairs, type TransferCandidate } from "@/lib/transfers";
 
 export async function getAccounts(userId: string) {
@@ -177,7 +177,7 @@ export async function projectionInput(
     cards,
     recurring: recurring.map((r) => ({
       name: r.name,
-      amount: toNum(r.amount),
+      amount: recurringAmount(r, snap.txs, today),
       direction: r.direction === "in" ? "in" : "out",
       frequency: r.frequency as "monthly" | "weekly" | "yearly",
       dayOfMonth: r.dayOfMonth,
@@ -297,4 +297,32 @@ export async function runTransferMatching(userId: string): Promise<number> {
       .where(and(eq(schema.transactions.userId, userId), inArray(schema.transactions.id, ids.slice(i, i + 500))));
   }
   return ids.length;
+}
+
+// Düzenli kalemin projeksiyondaki tutarı: "12 ay ortalaması" seçiliyse kategorinin geçmişinden hesaplanır
+export function recurringAmount(
+  r: { amount: string; autoAverage: boolean; categoryId: string | null; direction: string },
+  txs: { date: string; amount: number; categoryId: string | null }[],
+  today: ISODate,
+): number {
+  if (!r.autoAverage || !r.categoryId || !txs.length) return toNum(r.amount);
+  const earliest = txs.reduce((m, t) => (t.date < m ? t.date : m), txs[0].date);
+  const own = txs.filter((t) => t.categoryId === r.categoryId);
+  return categoryMonthlyAverage(own, r.direction === "in" ? "in" : "out", earliest, today);
+}
+
+// Planlama sayfası için: otomatik ortalamalı kalemlerin güncel tutarları (id → tutar)
+export async function autoAverageAmounts(
+  userId: string,
+  items: { id: string; amount: string; autoAverage: boolean; categoryId: string | null; direction: string }[],
+  today: ISODate,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!items.some((r) => r.autoAverage)) return out;
+  const t = schema.transactions;
+  const txs = (
+    await db().select({ date: t.date, amount: t.amount, categoryId: t.categoryId }).from(t).where(eq(t.userId, userId))
+  ).map((r) => ({ ...r, amount: toNum(r.amount) }));
+  for (const r of items) if (r.autoAverage) out.set(r.id, recurringAmount(r, txs, today));
+  return out;
 }
