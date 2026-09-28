@@ -16,7 +16,8 @@ export function balanceAt(
   return round2(anchor.amount - txs.filter((t) => t.date > date && t.date <= anchor.date).reduce((a, t) => a + t.amount, 0));
 }
 
-export type Flow = { date: ISODate; amount: number; category: string; projected: boolean };
+// internal: kendi hesaplarınız arası transfer; girişlere/çıkışlara değil, ayrı bir net satıra yazılır
+export type Flow = { date: ISODate; amount: number; category: string; projected: boolean; internal?: boolean };
 
 export type Bucket = {
   key: ISODate;
@@ -26,6 +27,7 @@ export type Bucket = {
   outflows: Record<string, number>;
   totalIn: number;
   totalOut: number;
+  internalNet: number;
   net: number;
   closing: number;
   projected: boolean;
@@ -69,6 +71,7 @@ export function buildBuckets(opts: {
       outflows: {},
       totalIn: 0,
       totalOut: 0,
+      internalNet: 0,
       net: 0,
       closing: 0,
       projected: nextKey(k, g) > addDays(opts.today, 1),
@@ -80,6 +83,10 @@ export function buildBuckets(opts: {
     if (f.date < opts.start || f.date > opts.end) continue;
     const b = index.get(bucketKey(f.date, g));
     if (!b) continue;
+    if (f.internal) {
+      b.internalNet = round2(b.internalNet + f.amount);
+      continue;
+    }
     const side = f.amount >= 0 ? b.inflows : b.outflows;
     side[f.category] = round2((side[f.category] ?? 0) + Math.abs(f.amount));
     if (f.amount >= 0) b.totalIn = round2(b.totalIn + f.amount);
@@ -88,7 +95,7 @@ export function buildBuckets(opts: {
   let running = opts.opening;
   for (const b of buckets) {
     b.opening = running;
-    b.net = round2(b.totalIn - b.totalOut);
+    b.net = round2(b.totalIn - b.totalOut + b.internalNet);
     b.closing = round2(running + b.net);
     running = b.closing;
   }

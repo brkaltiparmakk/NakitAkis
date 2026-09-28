@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Account } from "@/db/schema";
 import { balanceAt, type Flow } from "@/lib/cashflow";
+import { INTERNAL_TRANSFER } from "@/lib/categorize";
 import { addDays, type ISODate } from "@/lib/dates";
 import { foldTr } from "@/lib/import/normalize";
 import { round2, toNum } from "@/lib/money";
@@ -175,7 +176,13 @@ export async function checkingFlows(userId: string, start: ISODate, end: ISODate
     );
   return rows.map((r) => {
     const amount = toNum(r.amount);
-    return { date: r.date, amount, category: r.category ?? (amount >= 0 ? "Kategorisiz giriş" : "Kategorisiz çıkış"), projected: false };
+    return {
+      date: r.date,
+      amount,
+      category: r.category ?? (amount >= 0 ? "Kategorisiz giriş" : "Kategorisiz çıkış"),
+      projected: false,
+      internal: r.category === INTERNAL_TRANSFER,
+    };
   });
 }
 

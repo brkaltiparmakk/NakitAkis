@@ -1,5 +1,9 @@
 import { foldTr } from "@/lib/import/normalize";
 
+// Kendi hesaplarınız arasındaki para hareketi: nakit akışında giriş/çıkış sayılmaz, net olarak gösterilir.
+// Kart ödemesi ve kredi kullanımı da "transfer" türündedir ama gerçek nakit hareketi oldukları için bunun dışındadır.
+export const INTERNAL_TRANSFER = "Hesaplar Arası Transfer";
+
 export type Rule = { pattern: string; categoryId: string };
 
 // Karşılaştırma biçimi: Türkçe sadeleştirme + harf harf yazılmış adları birleştirme ("a l p e t" → "alpet")
@@ -94,5 +98,6 @@ export const DEFAULT_CATEGORIES: { name: string; kind: "income" | "expense" | "t
   { name: "Nakit Çekim", kind: "expense", color: "#78716c", patterns: ["atm", "nakit cekim", "para cekme"] },
   { name: "Diğer Gider", kind: "expense", color: "#94a3b8", patterns: [] },
   { name: "Kart Ödemesi", kind: "transfer", color: "#64748b", patterns: ["kredi karti odeme", "kart odemesi", "kk odeme", "kredi karti borc", "odemeniz icin tesekkur", "karti odeme", "k.karti odeme", "bonusflas odeme", "cep sube odeme"] },
-  { name: "Hesaplar Arası Transfer", kind: "transfer", color: "#6b7280", patterns: ["virman", "hesaplar arasi", "kendi hesabina", "avans hes.kull"] },
+  { name: "Kredi Kullanımı", kind: "transfer", color: "#0369a1", patterns: ["avans hes.kull", "kredi kullandirim", "kredi kullanim"] },
+  { name: "Hesaplar Arası Transfer", kind: "transfer", color: "#6b7280", patterns: ["virman", "hesaplar arasi", "kendi hesabina"] },
 ];

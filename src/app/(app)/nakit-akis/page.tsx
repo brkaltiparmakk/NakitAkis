@@ -104,6 +104,15 @@ export default async function CashflowPage({ searchParams }: { searchParams: Pro
                   <Row key={`out-${c}`} label={c} indent buckets={buckets} value={(b) => cell(b.outflows[c])} />
                 ))}
                 <Row label="Toplam çıkış" strong buckets={buckets} value={(b) => tl(b.totalOut)} className="text-neg" />
+                {buckets.some((b) => b.internalNet !== 0) && (
+                  <Row
+                    label="Kendi hesaplarım arası (net)"
+                    buckets={buckets}
+                    value={(b) => cell(b.internalNet)}
+                    neg={(b) => b.internalNet < 0}
+                    className="text-muted"
+                  />
+                )}
                 <Row label="Net akış" strong buckets={buckets} value={(b) => tl(b.net)} neg={(b) => b.net < 0} />
                 <Row label="Dönem sonu bakiye" strong buckets={buckets} value={(b) => tl(b.closing)} neg={(b) => b.closing < 0} />
               </tbody>

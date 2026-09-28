@@ -66,6 +66,27 @@ describe("buildBuckets", () => {
   });
 });
 
+describe("buildBuckets internal transfers", () => {
+  it("keeps own-account transfers out of inflows/outflows but in the balance", () => {
+    const [b] = buildBuckets({
+      start: "2026-09-01",
+      end: "2026-09-30",
+      granularity: "monthly",
+      opening: 0,
+      today: "2026-09-28",
+      flows: [
+        { date: "2026-09-04", amount: -133000, category: "Hesaplar Arası Transfer", projected: false, internal: true },
+        { date: "2026-09-04", amount: 133000, category: "Hesaplar Arası Transfer", projected: false, internal: true },
+        { date: "2026-09-07", amount: 10000, category: "Hesaplar Arası Transfer", projected: false, internal: true },
+        { date: "2026-09-07", amount: -2000, category: "Kart Ödemesi", projected: false },
+      ],
+    });
+    expect(b.inflows).toEqual({});
+    expect(b.outflows).toEqual({ "Kart Ödemesi": 2000 });
+    expect([b.totalIn, b.totalOut, b.internalNet, b.net, b.closing]).toEqual([0, 2000, 10000, 8000, 8000]);
+  });
+});
+
 describe("expandRecurring", () => {
   const base = { name: "x", amount: 1, direction: "out" as const, dayOfWeek: null, monthOfYear: null, endDate: null, accountId: null, category: null };
   it("monthly clamps to month end", () => {
