@@ -30,7 +30,7 @@ export function AccountForm({
 }) {
   const [type, setType] = useState(account?.type ?? "checking");
   const autoPlaceholder = autoSpend !== undefined ? `Otomatik: ${Math.round(autoSpend).toLocaleString("tr-TR")}` : "Otomatik";
-  const spendHint = "Boş bırakırsanız son 12 ayın ortalaması kullanılır (kredi taksidi ve faiz hariç)";
+  const spendHint = "Boş bırakırsanız son 3 ayın ortalaması kullanılır (kredi taksidi ve faiz hariç)";
   return (
     <form
       action={async (f) => {

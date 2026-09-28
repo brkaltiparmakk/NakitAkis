@@ -59,7 +59,7 @@ export default async function AccountsPage() {
               <div className="text-xs text-muted">
                 Projeksiyondaki aylık harcama:{" "}
                 <Money value={a.expectedMonthlySpend !== null ? toNum(a.expectedMonthlySpend) : autoSpend} />
-                {a.expectedMonthlySpend === null && " (son 12 ay ortalaması)"}
+                {a.expectedMonthlySpend === null && " (son 3 ay ortalaması)"}
               </div>
               {a.kmhLimit && (
                 <div className="text-xs text-muted">
@@ -153,7 +153,7 @@ export default async function AccountsPage() {
                 {a.paymentMode === "full" ? "tamamı ödeniyor" : "asgari ödeniyor"} · {installments.length} devam eden
                 taksitli alışveriş · aylık yeni harcama{" "}
                 <Money value={a.expectedMonthlySpend !== null ? toNum(a.expectedMonthlySpend) : autoSpend} />
-                {a.expectedMonthlySpend === null && " (12 ay ortalaması)"}
+                {a.expectedMonthlySpend === null && " (otomatik)"}
               </p>
 
               <details className="mt-3">

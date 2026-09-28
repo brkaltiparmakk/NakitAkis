@@ -147,10 +147,10 @@ describe("project", () => {
 });
 
 describe("daily spending", () => {
-  it("averages the last 12 full months and ignores loans, interest, installments and uncategorized on checking", async () => {
+  it("takes the median of full months and ignores loans, interest, installments and uncategorized on checking", async () => {
     const { averageMonthlySpend } = await import("./spending");
     const txs = [
-      { date: "2025-08-20", amount: -999, kind: "expense", category: "Market" }, // 12 ay penceresi dışı
+      { date: "2026-05-20", amount: -999, kind: "expense", category: "Market" }, // pencere dışı
       { date: "2026-06-02", amount: -300, kind: "expense", category: "Market" },
       { date: "2026-07-10", amount: -600, kind: "expense", category: "Restoran / Kafe" },
       { date: "2026-08-05", amount: -900, kind: "expense", category: "Ulaşım / Yakıt" },
@@ -160,10 +160,9 @@ describe("daily spending", () => {
       { date: "2026-08-12", amount: -800, kind: "expense", category: "Alışveriş", installmentNo: 2 },
       { date: "2026-09-10", amount: -123, kind: "expense", category: "Market" }, // içinde bulunulan ay sayılmaz
     ];
-    // Veri Ağustos 2025'te başlıyor: Eylül 2025 – Ağustos 2026 = 12 tam ay; toplam 1.800 → 150/ay
-    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: false })).toBe(150);
-    // Kartta kategorisizler de sayılır: 8.800 / 12
-    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(733.33);
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: false })).toBe(600);
+    // Ağustos'taki tek seferlik 7.000 ₺ medyanı değiştirmez (aylar: 300, 600, 7.900)
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(600);
   });
 
   it("falls back to the last 30 days when there is no full month", async () => {
@@ -239,8 +238,8 @@ describe("findTransferPairs", () => {
   });
 });
 
-describe("monthly averages with short history", () => {
-  it("divides by the full months that have data", async () => {
+describe("median spending with two months", () => {
+  it("averages the two middle months", async () => {
     const { averageMonthlySpend } = await import("./spending");
     const txs = [
       { date: "2026-07-01", amount: -1000, kind: "expense", category: "Market" },
