@@ -1,14 +1,17 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
+import { getCategories } from "@/lib/data";
 import { xlsxResponse } from "@/lib/excel";
 import { toNum } from "@/lib/money";
 import { transactionFilters } from "@/lib/transactionFilters";
 
 export async function GET(req: NextRequest) {
   const user = await requireUser();
-  const { where } = transactionFilters(user.id, Object.fromEntries(req.nextUrl.searchParams));
+  const categories = await getCategories(user.id);
+  const transferCategoryIds = categories.filter((c) => c.kind === "transfer").map((c) => c.id);
+  const { where, orderBy } = transactionFilters(user.id, Object.fromEntries(req.nextUrl.searchParams), { transferCategoryIds });
   const list = await db()
     .select({
       date: schema.transactions.date,
@@ -23,7 +26,7 @@ export async function GET(req: NextRequest) {
     .innerJoin(schema.accounts, eq(schema.accounts.id, schema.transactions.accountId))
     .leftJoin(schema.categories, eq(schema.categories.id, schema.transactions.categoryId))
     .where(and(...where))
-    .orderBy(desc(schema.transactions.date))
+    .orderBy(...orderBy)
     .limit(20000);
 
   const rows: (string | number | null)[][] = [

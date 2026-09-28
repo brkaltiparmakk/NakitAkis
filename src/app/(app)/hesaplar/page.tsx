@@ -4,14 +4,17 @@ import { AccountForm, BANK_NAMES } from "@/components/AccountForm";
 import { Button, Card, Empty, Field, Input, Money, PageHeader } from "@/components/ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { snapshot } from "@/lib/data";
-import { formatTr, todayIso } from "@/lib/dates";
-import { toNum } from "@/lib/money";
+import { projectionInput } from "@/lib/data";
+import { addMonths, formatTr, todayIso } from "@/lib/dates";
+import { cardOutstanding, project } from "@/lib/projection";
+import { tl, toNum } from "@/lib/money";
 
 export default async function AccountsPage() {
   const user = await requireUser();
   const today = todayIso();
-  const snap = await snapshot(user.id, today);
+  const input = await projectionInput(user.id, today, addMonths(today, 3));
+  const snap = input.snap;
+  const projected = project(input);
   const statements = await db()
     .select()
     .from(schema.cardStatements)
@@ -100,26 +103,51 @@ export default async function AccountsPage() {
                 </form>
               }
             >
-              <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <div>
-                  <dt className="text-muted">Son ekstre borcu</dt>
-                  <dd className="font-semibold">{latest ? <Money value={latest.totalDue} /> : "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted">Asgari ödeme</dt>
-                  <dd className="font-semibold">{latest ? <Money value={latest.minDue} /> : "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted">Son ödeme</dt>
-                  <dd className="font-semibold">{latest ? formatTr(latest.dueDate) : "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted">Dönem içi harcama</dt>
-                  <dd className="font-semibold">
-                    <Money value={unbilledSpend} />
-                  </dd>
-                </div>
-              </dl>
+              {(() => {
+                const cardInput = input.cards.find((c) => c.id === a.id);
+                const next = projected.events.find((e) => e.kind === "card" && e.cardId === a.id);
+                return (
+                  <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                    <div>
+                      <dt className="text-muted">Güncel borç</dt>
+                      <dd className="text-lg font-semibold">
+                        <Money value={cardInput ? cardOutstanding(cardInput, today) : unbilledSpend} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">
+                        Sıradaki ödeme {a.paymentMode === "full" ? "(tamamı)" : "(asgari)"}
+                      </dt>
+                      <dd className="text-lg font-semibold">
+                        {next ? <Money value={-next.amount} /> : "—"}
+                        {next && <span className="block text-xs font-normal text-muted">son gün {formatTr(next.date)}</span>}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">Son yüklenen ekstre</dt>
+                      <dd className="font-semibold">
+                        {latest ? (
+                          <>
+                            <Money value={latest.totalDue} />
+                            <span className="block text-xs font-normal text-muted">
+                              {formatTr(latest.statementDate)} · {latest.minDue <= 0 ? "ödenmiş" : `asgari ${tl(latest.minDue)}`}
+                            </span>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">Dönem içi harcama</dt>
+                      <dd className="font-semibold">
+                        <Money value={unbilledSpend} />
+                        <span className="block text-xs font-normal text-muted">henüz ekstreye girmedi</span>
+                      </dd>
+                    </div>
+                  </dl>
+                );
+              })()}
               <p className="mt-2 text-xs text-muted">
                 Kesim günü {a.statementDay ?? "?"}, son ödeme günü {a.dueDay ?? "?"} ·{" "}
                 {a.paymentMode === "full" ? "tamamı ödeniyor" : "asgari ödeniyor"} · {installments.length} devam eden

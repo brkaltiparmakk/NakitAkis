@@ -18,6 +18,23 @@ async function ownCategory(userId: string, id: string | null) {
   return c?.id ?? null;
 }
 
+// İşlemler sayfasında seçilen birden çok işleme aynı kategoriyi atar ("" = kategorisiz yap)
+export async function bulkSetCategory(f: FormData) {
+  const user = await requireUser();
+  const ids = f
+    .getAll("ids")
+    .map(String)
+    .filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+    .slice(0, 1000);
+  if (!ids.length) return;
+  const categoryId = await ownCategory(user.id, optStr(f, "categoryId"));
+  await db()
+    .update(schema.transactions)
+    .set({ categoryId })
+    .where(and(eq(schema.transactions.userId, user.id), inArray(schema.transactions.id, ids)));
+  revalidatePath("/", "layout");
+}
+
 // İşlemin kategorisini değiştirir. "learn" işaretliyse anahtar kelime kural olarak kaydedilir ve
 // aynı kelimeyi içeren kategorisiz işlemlere de uygulanır.
 export async function setTransactionCategory(f: FormData) {

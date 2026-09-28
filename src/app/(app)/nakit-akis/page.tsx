@@ -3,12 +3,14 @@ import { Button, Card, Empty, Field, Input, PageHeader, Select, cx } from "@/com
 import { requireUser } from "@/lib/auth";
 import type { Bucket } from "@/lib/cashflow";
 import { cashflowTable } from "@/lib/cashflowTable";
+import { todayIso } from "@/lib/dates";
 import { tl } from "@/lib/money";
 
 export default async function CashflowPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const user = await requireUser();
   const sp = await searchParams;
   const { viewKey, start, end, clamped, hasAccounts, buckets, inCats, outCats, undatedNet } = await cashflowTable(user.id, sp);
+  const today = todayIso();
   const excelHref = `/nakit-akis/excel?${new URLSearchParams({ gorunum: viewKey, baslangic: start, bitis: end })}`;
   const cell = (v: number | undefined) => (v ? tl(v) : "–");
 
@@ -16,7 +18,7 @@ export default async function CashflowPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader
         title="Nakit Akış Tablosu"
-        description="Vadesiz hesaplarınızın dönem başı bakiyesi, girişleri, çıkışları ve dönem sonu bakiyesi. Bugünden sonraki dönemler projeksiyondan gelir ve tahminidir."
+        description="Vadesiz hesaplarınızın dönem başı bakiyesi, girişleri, çıkışları ve dönem sonu bakiyesi. Bugüne kadarki tutarlar banka dökümündeki gerçek hareketlerdir (ör. yapılmış kart ödemeleri); bugünden sonrası projeksiyondan gelen tahmindir."
       />
       <Card className="mb-4">
         <form className="grid gap-3 sm:grid-cols-4">
@@ -50,7 +52,11 @@ export default async function CashflowPage({ searchParams }: { searchParams: Pro
                   {buckets.map((b) => (
                     <th key={b.key} className={cx("text-right", b.projected && "bg-subtle")}>
                       {b.label}
-                      {b.projected && <div className="font-normal normal-case">tahmini</div>}
+                      {b.projected && (
+                        <div className="font-normal normal-case">
+                          {b.key <= today ? "gerçekleşen + tahmini" : "tahmini"}
+                        </div>
+                      )}
                     </th>
                   ))}
                 </tr>

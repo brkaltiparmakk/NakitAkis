@@ -293,3 +293,19 @@ describe("card unbilled helpers", () => {
     ).toBe(6406.13);
   });
 });
+
+describe("cardOutstanding", () => {
+  it("ignores paid statements and adds unbilled spending", async () => {
+    const { cardOutstanding } = await import("./projection");
+    const base = {
+      id: "k", name: "Kart", statementDay: 30, dueDay: 9, minRate: 0.2, monthlyRate: 0.0425,
+      expectedMonthlySpend: 0, payFromAccountId: null, installments: [],
+    };
+    // Asgari 0 → ödenmiş ekstre, yalnızca dönem içi harcama borçtur
+    expect(cardOutstanding({ ...base, paymentMode: "minimum", unbilledSpend: 1200, latestStatement: { statementDate: "2026-08-30", dueDate: "2026-09-09", totalDue: 61729.15, minDue: 0 } }, "2026-09-28")).toBe(1200);
+    // Son ödeme günü gelmemiş ekstrenin tamamı borçtur
+    expect(cardOutstanding({ ...base, paymentMode: "minimum", unbilledSpend: 500, latestStatement: { statementDate: "2026-09-15", dueDate: "2026-09-30", totalDue: 10000, minDue: 2000 } }, "2026-09-28")).toBe(10500);
+    // Son ödeme günü geçmiş, asgari ödenmiş: kalan 8.000 devreder
+    expect(cardOutstanding({ ...base, paymentMode: "minimum", unbilledSpend: 0, latestStatement: { statementDate: "2026-08-15", dueDate: "2026-08-25", totalDue: 10000, minDue: 2000 } }, "2026-09-28")).toBe(8000);
+  });
+});

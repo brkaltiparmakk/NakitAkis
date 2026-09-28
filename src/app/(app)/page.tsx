@@ -4,8 +4,8 @@ import { AltLine, Card, Empty, Money, PageHeader, Stat } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { analysisRows, projectionInput } from "@/lib/data";
 import { addDays, addMonths, formatTr, monthLabel, startOfMonth, todayIso } from "@/lib/dates";
-import { round2, toNum } from "@/lib/money";
-import { project } from "@/lib/projection";
+import { round2, tl, toNum } from "@/lib/money";
+import { cardOutstanding, project } from "@/lib/projection";
 
 export default async function Dashboard() {
   const user = await requireUser();
@@ -36,7 +36,11 @@ export default async function Dashboard() {
   const undatedNet = round2(
     input.undatedReceivables.reduce((a, r) => a + (r.direction === "in" ? toNum(r.amount) : -toNum(r.amount)), 0),
   );
-  const cardDebt = round2(snap.cards.reduce((a, c) => a + (c.latest?.totalDue ?? 0) + c.unbilledSpend, 0));
+  // Güncel kart borcu: ödenmemiş ekstre kalanı + dönem içi harcamalar (ödenmiş ekstreler sayılmaz)
+  const cardDebt = round2(input.cards.reduce((a, c) => a + cardOutstanding(c, today), 0));
+  // Önümüzdeki 40 gündeki kart ödemeleri (ödeme alışkanlığına göre asgari ya da tamamı)
+  const nextCardPayments = result.events.filter((e) => e.kind === "card" && e.date <= addDays(today, 40));
+  const nextCardTotal = round2(-nextCardPayments.reduce((a, e) => a + e.amount, 0));
   const upcoming = result.events.filter((e) => e.date <= addDays(today, 30) && e.amount < 0 && e.kind !== "spend").slice(0, 12);
 
   // Son 6 ayın gelir/gider analizi (transferler hariç, kart harcamaları dahil)
@@ -66,7 +70,22 @@ export default async function Dashboard() {
       <PageHeader title="Özet" description={`${formatTr(today)} itibarıyla`} />
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Toplam nakit" value={<Money value={cash} />} tone={cash < 0 ? "neg" : undefined} hint={`${input.checking.length} vadesiz hesap`} />
-        <Stat label="Kart borçları" value={<Money value={cardDebt} />} hint="Son ekstre + dönem içi harcama" />
+        <Stat
+          label="Kart borcu (güncel)"
+          value={<Money value={cardDebt} />}
+          hint={
+            nextCardPayments.length ? (
+              <>
+                Sıradaki ödemeler: <b className="text-fg">{tl(nextCardTotal)}</b>
+                <span className="block">
+                  {nextCardPayments.map((e) => formatTr(e.date).slice(0, 5)).filter((d, i, a) => a.indexOf(d) === i).join(", ")} tarihlerinde
+                </span>
+              </>
+            ) : (
+              "Yakında kart ödemesi yok"
+            )
+          }
+        />
         <Stat
           label="30 gün sonra nakit"
           value={<Money value={in30} />}

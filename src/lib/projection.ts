@@ -70,7 +70,21 @@ export type ProjEvent = {
   kind: "recurring" | "loan" | "card" | "kmh" | "spend" | "receivable";
   category: string;
   accountId: string;
+  // Kart ödemelerinde ödemenin ait olduğu kart
+  cardId?: string;
 };
+
+// Kartın bugünkü toplam borcu: son ekstreden ödenmemiş kalan + henüz ekstreye girmemiş harcamalar.
+// Asgari 0 ise ekstre ödenmiş sayılır; son ödeme günü geçmişse ödeme alışkanlığına göre ödenmiş kabul edilir.
+export function cardOutstanding(c: CardInput, today: ISODate): number {
+  const s = c.latestStatement;
+  let statementPart = 0;
+  if (s && s.minDue > 0) {
+    if (s.dueDate > today) statementPart = s.totalDue;
+    else statementPart = c.paymentMode === "full" ? 0 : Math.max(0, s.totalDue - s.minDue);
+  }
+  return round2(statementPart + c.unbilledSpend);
+}
 
 export type CardCycle = {
   statementDate: ISODate;
@@ -150,7 +164,7 @@ export function projectCard(c: CardInput, today: ISODate, horizon: ISODate): { c
       actual: true,
     });
     if (s.dueDate > today && payment > 0 && !alreadyPaid) {
-      events.push({ date: s.dueDate, label: `${c.name} ekstre ödemesi`, amount: -payment, kind: "card", category: "Kart Ödemesi" });
+      events.push({ date: s.dueDate, label: `${c.name} ekstre ödemesi`, amount: -payment, kind: "card", category: "Kart Ödemesi", cardId: c.id });
     }
     if (s.statementDate > cursor) cursor = s.statementDate;
   }
@@ -170,7 +184,14 @@ export function projectCard(c: CardInput, today: ISODate, horizon: ISODate): { c
     carried = round2(statement - payment);
     cycles.push({ statementDate, dueDate, statement, payment, carried, interest, actual: false });
     if (dueDate <= horizon && payment > 0) {
-      events.push({ date: dueDate, label: `${c.name} ekstre ödemesi (tahmini)`, amount: -payment, kind: "card", category: "Kart Ödemesi" });
+      events.push({
+        date: dueDate,
+        label: `${c.name} ${c.paymentMode === "full" ? "ekstre ödemesi" : "asgari ödeme"} (tahmini)`,
+        amount: -payment,
+        kind: "card",
+        category: "Kart Ödemesi",
+        cardId: c.id,
+      });
     }
   }
   return { cycles, events };
