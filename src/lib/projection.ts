@@ -12,7 +12,16 @@ import { round2 } from "@/lib/money";
 export const TAX_FACTOR = 1.3;
 export const CASH_ACCOUNT = "__nakit";
 
-export type CheckingInput = { id: string; name: string; balance: number; kmhMonthlyRate: number };
+export type CheckingInput = {
+  id: string;
+  name: string;
+  balance: number;
+  kmhMonthlyRate: number;
+  // Kartla/nakit yapılan günlük harcamaların aylık tahmini; projeksiyona haftalık çıkış olarak eklenir
+  monthlySpend?: number;
+};
+
+export const SPEND_CATEGORY = "Günlük harcamalar (tahmini)";
 
 export type CardInput = {
   id: string;
@@ -58,7 +67,7 @@ export type ProjEvent = {
   date: ISODate;
   label: string;
   amount: number;
-  kind: "recurring" | "loan" | "card" | "kmh";
+  kind: "recurring" | "loan" | "card" | "kmh" | "spend";
   category: string;
   accountId: string;
 };
@@ -204,6 +213,16 @@ export function project(input: ProjectionInput): ProjectionResult {
       });
     }
   }
+  // Günlük harcamalar her pazartesi haftalık tutar olarak düşülür (aylık × 12 / 52)
+  for (const a of checking) {
+    const weekly = round2(((a.monthlySpend ?? 0) * 12) / 52);
+    if (weekly <= 0) continue;
+    let d = addDays(today, ((8 - isoWeekday(today)) % 7) || 7);
+    for (; d <= horizon; d = addDays(d, 7)) {
+      events.push({ date: d, label: `${a.name} günlük harcamalar (tahmini)`, amount: -weekly, kind: "spend", category: SPEND_CATEGORY, accountId: a.id });
+    }
+  }
+
   const cards: ProjectionResult["cards"] = [];
   for (const c of input.cards) {
     const r = projectCard(c, today, horizon);

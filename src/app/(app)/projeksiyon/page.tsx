@@ -8,7 +8,7 @@ import { round2 } from "@/lib/money";
 import { project } from "@/lib/projection";
 
 const HORIZONS = [3, 6, 12, 24];
-const KIND_LABEL = { recurring: "Düzenli", loan: "Kredi", card: "Kart", kmh: "KMH" } as const;
+const KIND_LABEL = { recurring: "Düzenli", loan: "Kredi", card: "Kart", kmh: "KMH", spend: "Harcama" } as const;
 
 export default async function ProjectionPage({ searchParams }: { searchParams: Promise<{ ay?: string }> }) {
   const user = await requireUser();

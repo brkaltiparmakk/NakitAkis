@@ -89,6 +89,9 @@ export function ImportWizard({ accounts }: { accounts: Acc[] }) {
             <ul className="text-sm">
               <li><b>{result.inserted}</b> işlem eklendi, <b>{result.categorized}</b> tanesi otomatik kategorilendi.</li>
               <li><b>{result.skipped}</b> işlem daha önce yüklendiği için atlandı.</li>
+              {result.transfersMatched > 0 && (
+                <li><b>{result.transfersMatched}</b> işlem diğer hesabınızdaki karşılığıyla eşleşip &quot;Hesaplar Arası Transfer&quot; yapıldı.</li>
+              )}
               {result.balanceUpdated && <li>Hesap bakiyesi dökümden güncellendi.</li>}
               {result.statementSaved && <li>Ekstre özeti (borç, asgari, son ödeme) kaydedildi.</li>}
             </ul>

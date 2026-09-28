@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { categorize } from "@/lib/categorize";
-import { getRules } from "@/lib/data";
+import { getRules, runTransferMatching } from "@/lib/data";
 import { foldTr } from "@/lib/import/normalize";
 import { optStr, str } from "./util";
 
@@ -104,5 +104,11 @@ export async function deleteTransaction(f: FormData) {
   await db()
     .delete(schema.transactions)
     .where(and(eq(schema.transactions.id, str(f, "id")), eq(schema.transactions.userId, user.id)));
+  revalidatePath("/", "layout");
+}
+
+export async function matchTransfers() {
+  const user = await requireUser();
+  await runTransferMatching(user.id);
   revalidatePath("/", "layout");
 }

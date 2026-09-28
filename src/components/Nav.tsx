@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/hesaplar", label: "Hesaplar & Kartlar" },
   { href: "/planlama", label: "Düzenli & Krediler" },
   { href: "/kategoriler", label: "Kategoriler" },
+  { href: "/ayarlar", label: "Ayarlar" },
 ];
 
 export function Nav() {

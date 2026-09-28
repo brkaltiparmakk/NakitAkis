@@ -5,7 +5,7 @@ import { count, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { endSession, startSession } from "@/lib/auth";
+import { endSession, requireUser, startSession } from "@/lib/auth";
 import { DEFAULT_CATEGORIES } from "@/lib/categorize";
 
 export type AuthState = { error?: string } | undefined;
@@ -64,4 +64,21 @@ export async function login(_: AuthState, form: FormData): Promise<AuthState> {
 export async function logout() {
   await endSession();
   redirect("/giris");
+}
+
+export type PasswordState = { error?: string; ok?: boolean } | undefined;
+
+export async function changePassword(_: PasswordState, form: FormData): Promise<PasswordState> {
+  const user = await requireUser();
+  const current = String(form.get("current") ?? "");
+  const next = String(form.get("password") ?? "");
+  if (next.length < 10) return { error: "Yeni şifre en az 10 karakter olmalı" };
+  if (next !== form.get("password2")) return { error: "Yeni şifreler eşleşmiyor" };
+  const [row] = await db().select().from(schema.users).where(eq(schema.users.id, user.id));
+  if (!row || !(await bcrypt.compare(current, row.passwordHash))) return { error: "Mevcut şifre hatalı" };
+  await db()
+    .update(schema.users)
+    .set({ passwordHash: await bcrypt.hash(next, 12) })
+    .where(eq(schema.users.id, user.id));
+  return { ok: true };
 }

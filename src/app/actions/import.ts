@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { categorize, categoryFromBankLabel, holderPattern } from "@/lib/categorize";
-import { getCategories, getRules } from "@/lib/data";
+import { getCategories, getRules, runTransferMatching } from "@/lib/data";
 import { planInserts } from "@/lib/import/dedupe";
 import { dedupeKey } from "@/lib/import/normalize";
 import { readImportFile } from "@/lib/import/readFile";
@@ -88,7 +88,9 @@ const commitSchema = z.object({
 });
 
 export type CommitInput = z.infer<typeof commitSchema>;
-export type CommitResult = { inserted: number; skipped: number; categorized: number; balanceUpdated: boolean; statementSaved: boolean } | { error: string };
+export type CommitResult =
+  | { inserted: number; skipped: number; categorized: number; transfersMatched: number; balanceUpdated: boolean; statementSaved: boolean }
+  | { error: string };
 
 function chunks<T>(arr: T[], n: number): T[][] {
   const out: T[][] = [];
@@ -188,8 +190,11 @@ export async function commitImport(input: CommitInput): Promise<CommitResult> {
     statementSaved = true;
   }
 
+  // Diğer vadesiz hesaplardaki karşılığıyla eşleşen havaleler iç transfer olarak işaretlenir
+  const transfersMatched = acc.type === "checking" ? await runTransferMatching(user.id) : 0;
+
   revalidatePath("/", "layout");
-  return { inserted: toInsert.length, skipped, categorized, balanceUpdated, statementSaved };
+  return { inserted: toInsert.length, skipped, categorized, transfersMatched, balanceUpdated, statementSaved };
 }
 
 export async function deleteImport(f: FormData) {

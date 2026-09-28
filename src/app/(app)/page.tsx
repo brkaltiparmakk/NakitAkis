@@ -33,7 +33,7 @@ export default async function Dashboard() {
   const cash = round2(input.checking.reduce((a, c) => a + c.balance, 0));
   const in30 = result.days.find((d) => d.date === addDays(today, 30))?.total ?? cash;
   const cardDebt = round2(snap.cards.reduce((a, c) => a + (c.latest?.totalDue ?? 0) + c.unbilledSpend, 0));
-  const upcoming = result.events.filter((e) => e.date <= addDays(today, 30) && e.amount < 0).slice(0, 12);
+  const upcoming = result.events.filter((e) => e.date <= addDays(today, 30) && e.amount < 0 && e.kind !== "spend").slice(0, 12);
 
   // Son 6 ayın gelir/gider analizi (transferler hariç, kart harcamaları dahil)
   const from = startOfMonth(addMonths(today, -5));

@@ -1,12 +1,12 @@
-import { and, desc, eq, gte, ilike, isNull, lte, type SQL } from "drizzle-orm";
-import { deleteTransaction, reapplyRules } from "@/app/actions/categories";
+import { and, desc } from "drizzle-orm";
+import { deleteTransaction, matchTransfers, reapplyRules } from "@/app/actions/categories";
 import { CategoryCell } from "@/components/CategoryCell";
 import { Button, Card, Field, Input, Money, PageHeader, Select } from "@/components/ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { getAccounts, getCategories } from "@/lib/data";
 import { formatTr } from "@/lib/dates";
-import { parseDate } from "@/lib/import/normalize";
+import { transactionFilters } from "@/lib/transactionFilters";
 import { toNum } from "@/lib/money";
 
 const PAGE = 200;
@@ -17,17 +17,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const [accounts, categories] = await Promise.all([getAccounts(user.id), getCategories(user.id)]);
   const page = Math.max(1, Number(sp.sayfa) || 1);
 
-  const where: SQL[] = [eq(schema.transactions.userId, user.id)];
-  const isUuid = (v?: string) => !!v && /^[0-9a-f-]{36}$/i.test(v);
-  if (isUuid(sp.hesap)) where.push(eq(schema.transactions.accountId, sp.hesap!));
-  if (sp.kategori === "yok") where.push(isNull(schema.transactions.categoryId));
-  else if (isUuid(sp.kategori)) where.push(eq(schema.transactions.categoryId, sp.kategori!));
-  const from = parseDate(sp.baslangic ?? null);
-  const to = parseDate(sp.bitis ?? null);
-  if (from) where.push(gte(schema.transactions.date, from));
-  if (to) where.push(lte(schema.transactions.date, to));
-  if (sp.q) where.push(ilike(schema.transactions.description, `%${sp.q.replace(/[%_]/g, "")}%`));
-
+  const { where, from, to } = transactionFilters(user.id, sp);
   const rows = await db()
     .select()
     .from(schema.transactions)
@@ -46,9 +36,22 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         title="İşlemler"
         description="Kategorisi yanlış olan işlemi düzeltin; isterseniz anahtar kelime kural olarak kaydedilir ve benzerleri de düzelir."
         actions={
-          <form action={reapplyRules}>
-            <Button variant="ghost">Kuralları kategorisizlere uygula</Button>
-          </form>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`/islemler/excel?${new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && k !== "sayfa") as [string, string][])}`}
+              className="inline-flex items-center rounded-lg border border-line px-3 py-2 text-sm font-medium hover:bg-subtle"
+            >
+              Excel&apos;e aktar
+            </a>
+            <form action={matchTransfers}>
+              <Button variant="ghost" title="Bir hesaptan çıkıp diğer hesabınıza aynı tutarla giren havaleleri iç transfer yapar">
+                Hesaplar arası transferleri eşleştir
+              </Button>
+            </form>
+            <form action={reapplyRules}>
+              <Button variant="ghost">Kuralları kategorisizlere uygula</Button>
+            </form>
+          </div>
         }
       />
       <Card className="mb-4">

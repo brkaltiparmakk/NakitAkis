@@ -33,7 +33,7 @@ export default async function AccountsPage() {
       <h2 className="mb-3 text-lg font-semibold">Vadesiz hesaplar</h2>
       <div className="mb-8 grid gap-4">
         {snap.checking.length === 0 && <Empty>Henüz vadesiz hesap yok.</Empty>}
-        {snap.checking.map(({ account: a, balance }) => (
+        {snap.checking.map(({ account: a, balance, autoSpend }) => (
           <Card
             key={a.id}
             title={`${a.name} · ${BANK_NAMES[a.bank] ?? a.bank}`}
@@ -52,6 +52,11 @@ export default async function AccountsPage() {
                 {a.balanceDate
                   ? `Bakiye çapası: ${formatTr(a.balanceDate)} · ${a.balanceSource === "statement" ? "dökümden" : "elle"}; sonrası işlemlerle hesaplanıyor`
                   : "Bakiye bilinmiyor: yalnızca işlemlerin toplamı gösteriliyor"}
+              </div>
+              <div className="text-xs text-muted">
+                Projeksiyondaki aylık harcama:{" "}
+                <Money value={a.expectedMonthlySpend !== null ? toNum(a.expectedMonthlySpend) : autoSpend} />
+                {a.expectedMonthlySpend === null && " (son 3 ay ortalaması)"}
               </div>
               {a.kmhLimit && (
                 <div className="text-xs text-muted">
@@ -72,7 +77,7 @@ export default async function AccountsPage() {
                 <Button>Kaydet</Button>
               </form>
               <div className="mt-4 border-t border-line pt-4">
-                <AccountForm account={a} checkingAccounts={checkingList} />
+                <AccountForm account={a} checkingAccounts={checkingList} autoSpend={autoSpend} />
               </div>
             </details>
           </Card>
@@ -82,7 +87,7 @@ export default async function AccountsPage() {
       <h2 className="mb-3 text-lg font-semibold">Kredi kartları</h2>
       <div className="grid gap-4">
         {snap.cards.length === 0 && <Empty>Henüz kredi kartı yok.</Empty>}
-        {snap.cards.map(({ account: a, latest, unbilledSpend, installments }) => {
+        {snap.cards.map(({ account: a, latest, unbilledSpend, installments, autoSpend }) => {
           const own = statements.filter((s) => s.accountId === a.id);
           return (
             <Card
@@ -118,7 +123,9 @@ export default async function AccountsPage() {
               <p className="mt-2 text-xs text-muted">
                 Kesim günü {a.statementDay ?? "?"}, son ödeme günü {a.dueDay ?? "?"} ·{" "}
                 {a.paymentMode === "full" ? "tamamı ödeniyor" : "asgari ödeniyor"} · {installments.length} devam eden
-                taksitli alışveriş
+                taksitli alışveriş · aylık yeni harcama{" "}
+                <Money value={a.expectedMonthlySpend !== null ? toNum(a.expectedMonthlySpend) : autoSpend} />
+                {a.expectedMonthlySpend === null && " (otomatik)"}
               </p>
 
               <details className="mt-3">
@@ -192,7 +199,7 @@ export default async function AccountsPage() {
                   </div>
                 )}
                 <div className="mt-4 border-t border-line pt-4">
-                  <AccountForm account={a} checkingAccounts={checkingList} />
+                  <AccountForm account={a} checkingAccounts={checkingList} autoSpend={autoSpend} />
                 </div>
               </details>
             </Card>

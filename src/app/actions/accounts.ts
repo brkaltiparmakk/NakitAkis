@@ -18,6 +18,7 @@ function fields(f: FormData) {
       ...base,
       kmhLimit: money(f, "kmhLimit"),
       kmhMonthlyRate: percent(f, "kmhMonthlyRate"),
+      expectedMonthlySpend: money(f, "expectedMonthlySpend"),
     };
   }
   return {

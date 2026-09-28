@@ -19,13 +19,18 @@ const amt = (v: string | null | undefined) => (v ? String(Number(v)).replace("."
 export function AccountForm({
   account,
   checkingAccounts,
+  autoSpend,
   onDone,
 }: {
   account?: Account;
   checkingAccounts: { id: string; name: string }[];
+  // Geçmiş hareketlerden hesaplanan aylık harcama (boş bırakılırsa kullanılır)
+  autoSpend?: number;
   onDone?: () => void;
 }) {
   const [type, setType] = useState(account?.type ?? "checking");
+  const autoPlaceholder = autoSpend !== undefined ? `Otomatik: ${Math.round(autoSpend).toLocaleString("tr-TR")}` : "Otomatik";
+  const spendHint = "Boş bırakırsanız son 3 ayın ortalaması kullanılır (kredi taksidi ve faiz hariç)";
   return (
     <form
       action={async (f) => {
@@ -61,6 +66,9 @@ export function AccountForm({
           <Field label="KMH aylık faiz (%)" hint="Vergiler hariç, ör. 4,25">
             <Input name="kmhMonthlyRate" inputMode="decimal" defaultValue={pct(account?.kmhMonthlyRate)} />
           </Field>
+          <Field label="Aylık günlük harcama (₺)" hint={spendHint}>
+            <Input name="expectedMonthlySpend" inputMode="decimal" defaultValue={amt(account?.expectedMonthlySpend)} placeholder={autoPlaceholder} />
+          </Field>
         </>
       ) : (
         <>
@@ -85,8 +93,8 @@ export function AccountForm({
               <option value="full">Tamamı</option>
             </Select>
           </Field>
-          <Field label="Tahmini aylık yeni harcama (₺)" hint="Projeksiyonda her ekstreye eklenir">
-            <Input name="expectedMonthlySpend" inputMode="decimal" defaultValue={amt(account?.expectedMonthlySpend)} />
+          <Field label="Tahmini aylık yeni harcama (₺)" hint={spendHint}>
+            <Input name="expectedMonthlySpend" inputMode="decimal" defaultValue={amt(account?.expectedMonthlySpend)} placeholder={autoPlaceholder} />
           </Field>
           <Field label="Ödendiği hesap">
             <Select name="payFromAccountId" defaultValue={account?.payFromAccountId ?? ""}>

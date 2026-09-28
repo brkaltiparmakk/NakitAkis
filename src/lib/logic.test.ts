@@ -145,3 +145,98 @@ describe("project", () => {
     expect(r.lowest?.date).toBe("2026-10-31");
   });
 });
+
+describe("daily spending", () => {
+  it("averages full months and ignores loans, interest, installments and uncategorized on checking", async () => {
+    const { averageMonthlySpend } = await import("./spending");
+    const txs = [
+      { date: "2026-05-20", amount: -999, kind: "expense", category: "Market" }, // pencere dışı
+      { date: "2026-06-02", amount: -300, kind: "expense", category: "Market" },
+      { date: "2026-07-10", amount: -600, kind: "expense", category: "Restoran / Kafe" },
+      { date: "2026-08-05", amount: -900, kind: "expense", category: "Ulaşım / Yakıt" },
+      { date: "2026-08-21", amount: -50000, kind: "expense", category: "Kredi Taksidi" },
+      { date: "2026-08-31", amount: -5000, kind: "expense", category: "Faiz / Masraf" },
+      { date: "2026-08-12", amount: -7000, kind: null, category: null },
+      { date: "2026-08-12", amount: -800, kind: "expense", category: "Alışveriş", installmentNo: 2 },
+      { date: "2026-09-10", amount: -123, kind: "expense", category: "Market" }, // içinde bulunulan ay sayılmaz
+    ];
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: false })).toBe(600);
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(round(600 + 7000 / 3));
+  });
+
+  it("falls back to the last 30 days when there is no full month", async () => {
+    const { averageMonthlySpend } = await import("./spending");
+    const txs = [
+      { date: "2026-09-03", amount: -1000, kind: null, category: null },
+      { date: "2026-09-20", amount: -500, kind: "expense", category: "Market" },
+    ];
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(1500);
+  });
+
+  it("nets refunds in expense categories", async () => {
+    const { averageMonthlySpend } = await import("./spending");
+    const txs = [
+      { date: "2026-09-03", amount: -41779, kind: "expense", category: "Alışveriş" },
+      { date: "2026-09-15", amount: 41779, kind: "expense", category: "Alışveriş" },
+      { date: "2026-09-07", amount: 10612, kind: "transfer", category: "Kart Ödemesi" },
+      { date: "2026-09-20", amount: -600, kind: "expense", category: "Restoran / Kafe" },
+      // Eşi olmayan artı tutar (BES ödemesi gibi) harcamayı azaltmaz
+      { date: "2026-09-21", amount: 30698.96, kind: "expense", category: "Sigorta / BES" },
+      // Kategorisiz artılar (ör. gelen havale) sayılmaz
+      { date: "2026-09-22", amount: 500, kind: null, category: null },
+    ];
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(600);
+  });
+
+  it("adds weekly spending events on Mondays", () => {
+    const r = project({
+      today: "2026-09-28",
+      horizon: "2026-10-20",
+      checking: [{ id: "a", name: "Vadesiz", balance: 0, kmhMonthlyRate: 0, monthlySpend: 5200 }],
+      cards: [],
+      recurring: [],
+      loans: [],
+    });
+    expect(r.events.map((e) => [e.date, e.kind, e.amount])).toEqual([
+      ["2026-10-05", "spend", -1200],
+      ["2026-10-12", "spend", -1200],
+      ["2026-10-19", "spend", -1200],
+    ]);
+  });
+});
+
+function round(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+describe("findTransferPairs", () => {
+  it("pairs opposite amounts across own accounts within a day", async () => {
+    const { findTransferPairs } = await import("./transfers");
+    const ids = findTransferPairs([
+      { id: "g-out", accountId: "g", date: "2026-09-07", amount: -40000, categorized: "none" },
+      { id: "a-in", accountId: "a", date: "2026-09-07", amount: 40000, categorized: "internal" },
+      { id: "a-out", accountId: "a", date: "2026-08-04", amount: -133000, categorized: "internal" },
+      { id: "g-in", accountId: "g", date: "2026-08-05", amount: 133000, categorized: "none" },
+      // aynı hesap içinde ters işlem eşlenmez
+      { id: "x1", accountId: "a", date: "2026-08-30", amount: -150, categorized: "none" },
+      { id: "x2", accountId: "a", date: "2026-08-30", amount: 150, categorized: "none" },
+      // 3 gün arayla: eşlenmez
+      { id: "y1", accountId: "a", date: "2026-07-01", amount: -500, categorized: "none" },
+      { id: "y2", accountId: "g", date: "2026-07-04", amount: 500, categorized: "none" },
+      // küçük tutarlar eşlenmez
+      { id: "z1", accountId: "a", date: "2026-07-01", amount: -50, categorized: "none" },
+      { id: "z2", accountId: "g", date: "2026-07-01", amount: 50, categorized: "none" },
+    ]);
+    expect(ids.sort()).toEqual(["g-in", "g-out"]);
+  });
+
+  it("uses each transaction once", async () => {
+    const { findTransferPairs } = await import("./transfers");
+    const ids = findTransferPairs([
+      { id: "o1", accountId: "a", date: "2026-09-01", amount: -1000, categorized: "none" },
+      { id: "o2", accountId: "a", date: "2026-09-01", amount: -1000, categorized: "none" },
+      { id: "i1", accountId: "g", date: "2026-09-01", amount: 1000, categorized: "none" },
+    ]);
+    expect(ids.sort()).toEqual(["i1", "o1"]);
+  });
+});

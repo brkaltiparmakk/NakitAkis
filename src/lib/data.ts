@@ -8,6 +8,8 @@ import { addDays, type ISODate } from "@/lib/dates";
 import { foldTr } from "@/lib/import/normalize";
 import { round2, toNum } from "@/lib/money";
 import type { CardInput, ProjectionInput } from "@/lib/projection";
+import { averageMonthlySpend } from "@/lib/spending";
+import { findTransferPairs, type TransferCandidate } from "@/lib/transfers";
 
 export async function getAccounts(userId: string) {
   return db()
@@ -32,15 +34,28 @@ export function anchorOf(a: Account) {
 async function txsForAccounts(ids: string[]) {
   if (!ids.length) return [];
   const rows = await db()
-    .select({ accountId: schema.transactions.accountId, date: schema.transactions.date, amount: schema.transactions.amount, categoryId: schema.transactions.categoryId, description: schema.transactions.description, installmentNo: schema.transactions.installmentNo, installmentTotal: schema.transactions.installmentTotal })
+    .select({
+      accountId: schema.transactions.accountId,
+      date: schema.transactions.date,
+      amount: schema.transactions.amount,
+      categoryId: schema.transactions.categoryId,
+      category: schema.categories.name,
+      kind: schema.categories.kind,
+      description: schema.transactions.description,
+      installmentNo: schema.transactions.installmentNo,
+      installmentTotal: schema.transactions.installmentTotal,
+    })
     .from(schema.transactions)
+    .leftJoin(schema.categories, eq(schema.categories.id, schema.transactions.categoryId))
     .where(inArray(schema.transactions.accountId, ids));
   return rows.map((r) => ({ ...r, amount: toNum(r.amount) }));
 }
 
-export type CheckingSnapshot = { account: Account; balance: number };
+// autoSpend: geçmiş hareketlerden hesaplanan aylık harcama; hesapta elle girilmiş tutar yoksa projeksiyonda bu kullanılır
+export type CheckingSnapshot = { account: Account; balance: number; autoSpend: number };
 export type CardSnapshot = {
   account: Account;
+  autoSpend: number;
   latest: { statementDate: string; dueDate: string; totalDue: number; minDue: number } | null;
   unbilledSpend: number;
   installments: { label: string; amount: number; remaining: number; startCycle: number }[];
@@ -53,10 +68,14 @@ export async function snapshot(userId: string, today: ISODate) {
   const cardAccs = accounts.filter((a) => a.type === "credit_card");
   const txs = await txsForAccounts(accounts.map((a) => a.id));
 
-  const checking: CheckingSnapshot[] = checkingAccs.map((a) => ({
-    account: a,
-    balance: balanceAt(anchorOf(a), txs.filter((t) => t.accountId === a.id), today),
-  }));
+  const checking: CheckingSnapshot[] = checkingAccs.map((a) => {
+    const own = txs.filter((t) => t.accountId === a.id);
+    return {
+      account: a,
+      balance: balanceAt(anchorOf(a), own, today),
+      autoSpend: averageMonthlySpend(own, today, { includeUncategorized: false }),
+    };
+  });
 
   const statements = cardAccs.length
     ? await db()
@@ -95,7 +114,7 @@ export async function snapshot(userId: string, today: ISODate) {
         // Son görülen taksit henüz ekstreye girmediyse bir sonraki ekstrede o taksit zaten dönem harcamasında sayılır
         startCycle: g.lastDate > cutoff ? 2 : 1,
       }));
-    return { account: a, latest, unbilledSpend, installments };
+    return { account: a, latest, unbilledSpend, installments, autoSpend: averageMonthlySpend(own, today, { includeUncategorized: true }) };
   });
 
   return { accounts, checking, cards, txs };
@@ -110,7 +129,7 @@ export async function projectionInput(userId: string, today: ISODate, horizon: I
   ]);
   const catName = new Map(categories.map((c) => [c.id, c.name]));
 
-  const cards: CardInput[] = snap.cards.map(({ account: a, latest, unbilledSpend, installments }) => ({
+  const cards: CardInput[] = snap.cards.map(({ account: a, latest, unbilledSpend, installments, autoSpend }) => ({
     id: a.id,
     name: a.name,
     statementDay: a.statementDay ?? 1,
@@ -118,7 +137,7 @@ export async function projectionInput(userId: string, today: ISODate, horizon: I
     minRate: a.minPaymentRate ? toNum(a.minPaymentRate) : 0.2,
     monthlyRate: a.cardMonthlyRate ? toNum(a.cardMonthlyRate) : 0,
     paymentMode: a.paymentMode === "full" ? "full" : "minimum",
-    expectedMonthlySpend: toNum(a.expectedMonthlySpend),
+    expectedMonthlySpend: a.expectedMonthlySpend !== null ? toNum(a.expectedMonthlySpend) : autoSpend,
     payFromAccountId: a.payFromAccountId,
     latestStatement: latest,
     unbilledSpend,
@@ -129,11 +148,12 @@ export async function projectionInput(userId: string, today: ISODate, horizon: I
     snap,
     today,
     horizon,
-    checking: snap.checking.map(({ account: a, balance }) => ({
+    checking: snap.checking.map(({ account: a, balance, autoSpend }) => ({
       id: a.id,
       name: a.name,
       balance,
       kmhMonthlyRate: toNum(a.kmhMonthlyRate),
+      monthlySpend: a.expectedMonthlySpend !== null ? toNum(a.expectedMonthlySpend) : autoSpend,
     })),
     cards,
     recurring: recurring.map((r) => ({
@@ -211,3 +231,41 @@ export async function getRules(userId: string) {
     .where(eq(schema.categoryRules.userId, userId));
 }
 
+
+// Vadesiz hesaplar arasındaki kategorisiz transfer çiftlerini bulup "Hesaplar Arası Transfer" yapar.
+// Dönen değer güncellenen işlem sayısıdır.
+export async function runTransferMatching(userId: string): Promise<number> {
+  const [internal] = await db()
+    .select({ id: schema.categories.id })
+    .from(schema.categories)
+    .where(and(eq(schema.categories.userId, userId), eq(schema.categories.name, INTERNAL_TRANSFER)));
+  if (!internal) return 0;
+  const rows = await db()
+    .select({
+      id: schema.transactions.id,
+      accountId: schema.transactions.accountId,
+      date: schema.transactions.date,
+      amount: schema.transactions.amount,
+      categoryId: schema.transactions.categoryId,
+    })
+    .from(schema.transactions)
+    .innerJoin(schema.accounts, eq(schema.accounts.id, schema.transactions.accountId))
+    .where(and(eq(schema.transactions.userId, userId), eq(schema.accounts.type, "checking")));
+  const candidates: TransferCandidate[] = rows
+    .filter((r) => r.categoryId === null || r.categoryId === internal.id)
+    .map((r) => ({
+      id: r.id,
+      accountId: r.accountId,
+      date: r.date,
+      amount: toNum(r.amount),
+      categorized: r.categoryId === null ? "none" : "internal",
+    }));
+  const ids = findTransferPairs(candidates);
+  for (let i = 0; i < ids.length; i += 500) {
+    await db()
+      .update(schema.transactions)
+      .set({ categoryId: internal.id })
+      .where(and(eq(schema.transactions.userId, userId), inArray(schema.transactions.id, ids.slice(i, i + 500))));
+  }
+  return ids.length;
+}
