@@ -270,3 +270,26 @@ describe("receivables in projection", () => {
     ]);
   });
 });
+
+describe("card unbilled helpers", () => {
+  it("finds the last statement date from the statement day", async () => {
+    const { previousMonthlyDate } = await import("./dates");
+    expect(previousMonthlyDate("2026-09-28", 30)).toBe("2026-08-30");
+    expect(previousMonthlyDate("2026-09-30", 30)).toBe("2026-09-30");
+    expect(previousMonthlyDate("2026-03-10", 31)).toBe("2026-02-28");
+    expect(previousMonthlyDate("2026-01-05", 15)).toBe("2025-12-15");
+  });
+
+  it("nets exact refunds but not unrelated inflows", async () => {
+    const { netSpend } = await import("./spending");
+    expect(
+      netSpend([
+        { amount: -41779 },
+        { amount: 41779 },
+        { amount: -6246.14 },
+        { amount: -159.99 },
+        { amount: 500 },
+      ]),
+    ).toBe(6406.13);
+  });
+});

@@ -4,11 +4,11 @@ import { db, schema } from "@/db";
 import type { Account, Receivable } from "@/db/schema";
 import { balanceAt, type Flow } from "@/lib/cashflow";
 import { INTERNAL_TRANSFER } from "@/lib/categorize";
-import { addDays, type ISODate } from "@/lib/dates";
+import { addDays, previousMonthlyDate, type ISODate } from "@/lib/dates";
 import { foldTr } from "@/lib/import/normalize";
 import { round2, toNum } from "@/lib/money";
 import type { CardInput, ProjectionInput } from "@/lib/projection";
-import { averageMonthlySpend } from "@/lib/spending";
+import { averageMonthlySpend, netSpend } from "@/lib/spending";
 import { findTransferPairs, type TransferCandidate } from "@/lib/transfers";
 
 export async function getAccounts(userId: string) {
@@ -90,26 +90,32 @@ export async function snapshot(userId: string, today: ISODate) {
     const latest = s
       ? { statementDate: s.statementDate, dueDate: s.dueDate, totalDue: toNum(s.totalDue), minDue: toNum(s.minDue) }
       : null;
-    const cutoff = latest?.statementDate ?? addDays(today, -30);
+    // Son hesap kesimi: yüklenmiş ekstre varsa onun tarihi, yoksa karttaki kesim gününden hesaplanır
+    const cutoff =
+      latest?.statementDate ?? (a.statementDay ? previousMonthlyDate(today, a.statementDay) : addDays(today, -30));
     const own = txs.filter((t) => t.accountId === a.id);
-    const unbilledSpend = round2(own.filter((t) => t.date > cutoff && t.amount < 0).reduce((x, t) => x - t.amount, 0));
+    // Kesilmemiş dönem harcaması: iadeler düşülür, kart ödemeleri (transfer) hesaba katılmaz
+    const unbilledSpend = netSpend(own.filter((t) => t.date > cutoff && t.kind !== "transfer"));
 
-    // Aynı taksitli alışverişin farklı ekstrelerdeki satırları gruplanır, en son görülen taksit no'su alınır
-    const groups = new Map<string, { label: string; amount: number; total: number; maxNo: number; lastDate: string }>();
+    // Aynı taksitli alışverişin farklı ekstrelerdeki satırları gruplanır, en son görülen taksit no'su alınır.
+    // Aynı gün aynı tutarda iki ayrı taksitli alışveriş varsa (count) ikisi de sayılır.
+    const groups = new Map<string, { label: string; amount: number; total: number; maxNo: number; lastDate: string; count: number }>();
     for (const t of own) {
       if (!t.installmentNo || !t.installmentTotal || t.amount >= 0) continue;
       const base = foldTr(t.description).replace(/\d+\s*[./]?\s*(taksit)?\s*\/\s*\d+|taksit|\(|\)/g, "").replace(/\s+/g, " ").trim();
       const key = `${base}|${Math.abs(t.amount)}|${t.installmentTotal}`;
       const g = groups.get(key);
       if (!g || t.installmentNo > g.maxNo) {
-        groups.set(key, { label: t.description, amount: -t.amount, total: t.installmentTotal, maxNo: t.installmentNo, lastDate: t.date });
+        groups.set(key, { label: t.description, amount: -t.amount, total: t.installmentTotal, maxNo: t.installmentNo, lastDate: t.date, count: 1 });
+      } else if (t.installmentNo === g.maxNo) {
+        g.count++;
       }
     }
     const installments = [...groups.values()]
       .filter((g) => g.maxNo < g.total && g.lastDate > addDays(today, -70))
       .map((g) => ({
-        label: g.label,
-        amount: g.amount,
+        label: g.count > 1 ? `${g.label} ×${g.count}` : g.label,
+        amount: round2(g.amount * g.count),
         remaining: g.total - g.maxNo,
         // Son görülen taksit henüz ekstreye girmediyse bir sonraki ekstrede o taksit zaten dönem harcamasında sayılır
         startCycle: g.lastDate > cutoff ? 2 : 1,

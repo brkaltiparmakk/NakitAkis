@@ -45,6 +45,13 @@ export function nextMonthlyDate(d: ISODate, day: number, inclusive = false): ISO
   return dateInMonth(x.getUTCFullYear(), x.getUTCMonth() + 1, day);
 }
 
+// d tarihinde ya da öncesindeki son "ayın day'i" (ör. son hesap kesim tarihi)
+export function previousMonthlyDate(d: ISODate, day: number): ISODate {
+  const x = toDate(d);
+  const candidate = dateInMonth(x.getUTCFullYear(), x.getUTCMonth(), day);
+  return candidate <= d ? candidate : dateInMonth(x.getUTCFullYear(), x.getUTCMonth() - 1, day);
+}
+
 // 1=Pazartesi … 7=Pazar
 export function isoWeekday(d: ISODate): number {
   const w = toDate(d).getUTCDay();

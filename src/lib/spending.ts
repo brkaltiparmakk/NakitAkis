@@ -5,6 +5,20 @@ import { round2 } from "@/lib/money";
 // (kredi taksitleri, KMH/kart faizi).
 const EXCLUDED = new Set(["Kredi Taksidi", "Faiz / Masraf"]);
 
+// Çıkışların toplamı; bir artı tutar yalnızca aynı tutarlı bir çıkışı birebir karşılıyorsa iade sayılıp düşülür.
+// (Her artıyı düşmek, ör. BES ödemesi ya da kart ödemesi gibi girişleri de harcamadan çıkarırdı.)
+export function netSpend(list: { amount: number }[]): number {
+  const refunds = list.filter((t) => t.amount > 0).map((t) => t.amount.toFixed(2));
+  let sum = 0;
+  for (const t of list) {
+    if (t.amount >= 0) continue;
+    const i = refunds.indexOf((-t.amount).toFixed(2));
+    if (i >= 0) refunds.splice(i, 1);
+    else sum -= t.amount;
+  }
+  return round2(sum);
+}
+
 export type SpendTx = {
   date: ISODate;
   amount: number;
@@ -22,19 +36,7 @@ export function averageMonthlySpend(txs: SpendTx[], today: ISODate, opts: { mont
     !t.installmentNo &&
     (t.kind === "expense" ? !EXCLUDED.has(t.category ?? "") : t.kind === null && opts.includeUncategorized);
   const spend = txs.filter(isSpend);
-  // Çıkışların toplamı; bir artı tutar yalnızca aynı tutarlı bir çıkışı birebir karşılıyorsa iade sayılıp düşülür.
-  // (Gider kategorisindeki her artıyı düşmek, ör. BES ödemesi gibi girişleri de harcamadan çıkarırdı.)
-  const total = (list: SpendTx[]) => {
-    const refunds = list.filter((t) => t.amount > 0).map((t) => t.amount.toFixed(2));
-    let sum = 0;
-    for (const t of list) {
-      if (t.amount >= 0) continue;
-      const i = refunds.indexOf((-t.amount).toFixed(2));
-      if (i >= 0) refunds.splice(i, 1);
-      else sum -= t.amount;
-    }
-    return round2(sum);
-  };
+  const total = netSpend;
   if (!txs.length) return 0;
 
   const earliest = txs.reduce((m, t) => (t.date < m ? t.date : m), txs[0].date);
