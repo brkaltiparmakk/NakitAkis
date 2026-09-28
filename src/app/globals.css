@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-subtle: #f1f3f6;
+  --color-line: #e3e6eb;
+  --color-fg: #111827;
+  --color-muted: #6b7280;
+  --color-accent: #2563eb;
+  --color-pos: #15803d;
+  --color-neg: #dc2626;
+  --color-warn: #b45309;
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-grid: #e1e0d9;
+  --color-axis: #898781;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0d1117;
+    --color-surface: #151b23;
+    --color-subtle: #1c2430;
+    --color-line: #2a3442;
+    --color-fg: #e6edf3;
+    --color-muted: #8b949e;
+    --color-accent: #4c8dff;
+    --color-pos: #3fb950;
+    --color-neg: #f85149;
+    --color-warn: #d29922;
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+    --color-grid: #2c2c2a;
+    --color-axis: #898781;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+table.data {
+  @apply w-full text-sm;
+}
+table.data th {
+  @apply border-b border-line px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted;
+}
+table.data td {
+  @apply border-b border-line px-2 py-2 align-top;
+}
+table.data tr:last-child td {
+  @apply border-b-0;
+}

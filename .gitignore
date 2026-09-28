@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+.vercel
+.env
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
+# Gerçek ekstreler asla repoya girmesin
+ornekler/
+*.pdf
+*.xls
+*.xlsx
+*.csv
