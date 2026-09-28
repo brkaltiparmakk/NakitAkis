@@ -147,7 +147,7 @@ describe("project", () => {
 });
 
 describe("daily spending", () => {
-  it("averages full months and ignores loans, interest, installments and uncategorized on checking", async () => {
+  it("takes the median of full months and ignores loans, interest, installments and uncategorized on checking", async () => {
     const { averageMonthlySpend } = await import("./spending");
     const txs = [
       { date: "2026-05-20", amount: -999, kind: "expense", category: "Market" }, // pencere dışı
@@ -161,7 +161,8 @@ describe("daily spending", () => {
       { date: "2026-09-10", amount: -123, kind: "expense", category: "Market" }, // içinde bulunulan ay sayılmaz
     ];
     expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: false })).toBe(600);
-    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(round(600 + 7000 / 3));
+    // Ağustos'taki tek seferlik 7.000 ₺ medyanı değiştirmez (aylar: 300, 600, 7.900)
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: true })).toBe(600);
   });
 
   it("falls back to the last 30 days when there is no full month", async () => {
@@ -205,10 +206,6 @@ describe("daily spending", () => {
   });
 });
 
-function round(n: number) {
-  return Math.round(n * 100) / 100;
-}
-
 describe("findTransferPairs", () => {
   it("pairs opposite amounts across own accounts within a day", async () => {
     const { findTransferPairs } = await import("./transfers");
@@ -238,5 +235,16 @@ describe("findTransferPairs", () => {
       { id: "i1", accountId: "g", date: "2026-09-01", amount: 1000, categorized: "none" },
     ]);
     expect(ids.sort()).toEqual(["i1", "o1"]);
+  });
+});
+
+describe("median spending with two months", () => {
+  it("averages the two middle months", async () => {
+    const { averageMonthlySpend } = await import("./spending");
+    const txs = [
+      { date: "2026-07-01", amount: -1000, kind: "expense", category: "Market" },
+      { date: "2026-08-01", amount: -3000, kind: "expense", category: "Market" },
+    ];
+    expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: false })).toBe(2000);
   });
 });

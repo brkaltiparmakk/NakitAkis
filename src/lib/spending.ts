@@ -13,7 +13,7 @@ export type SpendTx = {
   installmentNo?: number | null;
 };
 
-// Bir hesabın aylık ortalama harcaması: son `months` tam ayın ortalaması.
+// Bir hesabın aylık tipik harcaması: son `months` tam ayın aylık toplamlarının medyanı.
 // Hesapta o kadar eski veri yoksa veri olan tam aylar kullanılır; hiç tam ay yoksa son 30 günün toplamı alınır.
 // includeUncategorized: kart hesaplarında kategorisiz satırlar da harcamadır; vadesizde ise çoğu havale olduğu için sayılmaz.
 export function averageMonthlySpend(txs: SpendTx[], today: ISODate, opts: { months?: number; includeUncategorized: boolean }): number {
@@ -46,7 +46,14 @@ export function averageMonthlySpend(txs: SpendTx[], today: ISODate, opts: { mont
   const fullMonths = Math.round(diffDays(start, monthEnd) / 30.44);
 
   if (fullMonths >= 1) {
-    return round2(total(spend.filter((t) => t.date >= start && t.date < monthEnd)) / fullMonths);
+    // Aylık toplamların medyanı: vergi gibi tek seferlik büyük harcamalar tahmini şişirmez
+    const totals = Array.from({ length: fullMonths }, (_, i) => {
+      const from = addMonths(start, i);
+      const to = addMonths(start, i + 1);
+      return total(spend.filter((t) => t.date >= from && t.date < to));
+    }).sort((a, b) => a - b);
+    const mid = Math.floor(totals.length / 2);
+    return round2(totals.length % 2 ? totals[mid] : (totals[mid - 1] + totals[mid]) / 2);
   }
   const from = addDays(today, -30);
   return total(spend.filter((t) => t.date > from && t.date <= today));
