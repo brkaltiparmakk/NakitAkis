@@ -11,6 +11,7 @@ const HEADER_HINTS: Record<keyof Omit<ColumnMapping, "headerRow" | "invertSign">
   debit: [/^borc$/, /borc tutari/, /cikan/, /^cikis/],
   credit: [/^alacak$/, /alacak tutari/, /giren/, /^giris/],
   balance: [/bakiye/],
+  label: [/etiket/, /harcama grubu/, /sektor/],
 };
 
 function matchCol(header: string[], patterns: RegExp[], taken: Set<number>): number | undefined {
@@ -39,7 +40,9 @@ export function detectHeaderRow(rows: Cell[][]): number {
   return best;
 }
 
-export function suggestMapping(rows: Cell[][], invertSign: boolean): ColumnMapping | null {
+// isCard: kart ekstrelerinde bazı bankalar harcamayı pozitif (Akbank), bazıları negatif (Garanti) yazar.
+// Bizde harcama negatif olmalı; kartta tutarların çoğu pozitifse işaret ters çevrilir.
+export function suggestMapping(rows: Cell[][], isCard: boolean): ColumnMapping | null {
   const headerRow = detectHeaderRow(rows);
   if (headerRow < 0) return null;
   const header = rows[headerRow].map((c) => (typeof c === "string" ? foldTr(c) : ""));
@@ -55,9 +58,15 @@ export function suggestMapping(rows: Cell[][], invertSign: boolean): ColumnMappi
   const credit = pick("credit");
   const amount = debit !== undefined && credit !== undefined ? undefined : pick("amount");
   const description = pick("description");
+  const label = pick("label");
   if (date === undefined || description === undefined) return null;
   if (amount === undefined && (debit === undefined || credit === undefined)) return null;
-  return { headerRow, date, description, amount, debit, credit, balance, invertSign };
+  const mapping: ColumnMapping = { headerRow, date, description, amount, debit, credit, balance, label, invertSign: false };
+  if (isCard) {
+    const amounts = applyMapping(rows, mapping).transactions.map((t) => t.amount);
+    mapping.invertSign = amounts.filter((a) => a > 0).length > amounts.filter((a) => a < 0).length;
+  }
+  return mapping;
 }
 
 // ---- Eşlemeyi uygulama ----
@@ -91,12 +100,14 @@ export function applyMapping(rows: Cell[][], m: ColumnMapping): TabularResult {
     }
     if (m.invertSign) amount = -amount;
     const inst = parseInstallment(description);
+    const label = m.label !== undefined ? String(row[m.label] ?? "").trim() : "";
     transactions.push({
       date,
       description: description || "(açıklama yok)",
       amount,
       installmentNo: inst?.no ?? null,
       installmentTotal: inst?.total ?? null,
+      label: label || null,
     });
     if (m.balance !== undefined) {
       const b = parseAmount(row[m.balance]);
@@ -117,6 +128,24 @@ function latestBalance(
   const sameDay = balances.filter((b) => b.date === maxDate);
   const pick = descending ? sameDay[0] : sameDay[sameDay.length - 1];
   return { date: pick.date, amount: pick.amount };
+}
+
+// Başlığın üstündeki "Anahtar;Değer" satırlarını metin satırlarına çevirir (ekstre özeti ve hesap sahibi için)
+export function headerLines(rows: Cell[][], headerRow: number): string[] {
+  const upto = headerRow >= 0 ? headerRow : Math.min(rows.length, 15);
+  return rows.slice(0, upto).map((r) => r.filter((c) => c !== null && c !== "").join(" ").replace(/\s+/g, " ").trim());
+}
+
+export function detectHolderName(rows: Cell[][], headerRow: number): string | null {
+  const upto = headerRow >= 0 ? headerRow : Math.min(rows.length, 15);
+  for (const r of rows.slice(0, upto)) {
+    const cells = r.filter((c) => c !== null && c !== "").map(String);
+    if (cells.length >= 2 && /^(ad soyad|adi soyadi|musteri adi|hesap sahibi)/.test(foldTr(cells[0]))) {
+      const name = cells[1].replace(/\s+/g, " ").trim();
+      return name.split(" ").length >= 2 ? name : null;
+    }
+  }
+  return null;
 }
 
 // ---- CSV ----

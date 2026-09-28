@@ -7,6 +7,8 @@ export type ParsedTx = {
   amount: number;
   installmentNo: number | null;
   installmentTotal: number | null;
+  // Bankanın verdiği kategori etiketi (varsa)
+  label?: string | null;
 };
 
 export type StatementSummary = {
@@ -23,6 +25,10 @@ export type ImportPreview =
       fileName: string;
       rows: Cell[][];
       mapping: ColumnMapping | null;
+      // Tablonun üstündeki özet satırlarından okunan ekstre bilgisi (kart ekstrelerinde)
+      summary: StatementSummary;
+      // Dökümdeki hesap sahibi adı; kendi hesaplarınız arası transferleri tanımak için
+      holderName: string | null;
     }
   | {
       kind: "pdf";

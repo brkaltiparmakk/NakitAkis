@@ -125,7 +125,9 @@ export function projectCard(c: CardInput, today: ISODate, horizon: ISODate): { c
   let cursor = today;
   const s = c.latestStatement;
   if (s) {
-    const payment = c.paymentMode === "full" ? s.totalDue : s.minDue;
+    // Asgari 0 görünüyorsa ekstre zaten ödenmiştir (Akbank ödeme sonrası kalan tutarları gösterir)
+    const alreadyPaid = s.minDue <= 0;
+    const payment = c.paymentMode === "full" || alreadyPaid ? s.totalDue : s.minDue;
     carried = round2(Math.max(0, s.totalDue - payment));
     cycles.push({
       statementDate: s.statementDate,
@@ -136,7 +138,7 @@ export function projectCard(c: CardInput, today: ISODate, horizon: ISODate): { c
       interest: 0,
       actual: true,
     });
-    if (s.dueDate > today && payment > 0) {
+    if (s.dueDate > today && payment > 0 && !alreadyPaid) {
       events.push({ date: s.dueDate, label: `${c.name} ekstre ödemesi`, amount: -payment, kind: "card", category: "Kart Ödemesi" });
     }
     if (s.statementDate > cursor) cursor = s.statementDate;

@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { categorize } from "@/lib/categorize";
-import { getRules } from "@/lib/data";
+import { categorize, categoryFromBankLabel, holderPattern } from "@/lib/categorize";
+import { getCategories, getRules } from "@/lib/data";
 import { planInserts } from "@/lib/import/dedupe";
 import { dedupeKey } from "@/lib/import/normalize";
 import { readImportFile } from "@/lib/import/readFile";
@@ -58,6 +58,7 @@ const commitSchema = z.object({
         amount: z.number().finite(),
         installmentNo: z.number().int().nullable(),
         installmentTotal: z.number().int().nullable(),
+        label: z.string().max(100).nullable().optional(),
       }),
     )
     .max(10000),
@@ -71,6 +72,7 @@ const commitSchema = z.object({
       debit: z.number().int().optional(),
       credit: z.number().int().optional(),
       balance: z.number().int().optional(),
+      label: z.number().int().optional(),
       invertSign: z.boolean(),
     })
     .nullable(),
@@ -82,6 +84,7 @@ const commitSchema = z.object({
       minDue: z.number().finite(),
     })
     .nullable(),
+  holderName: z.string().max(120).nullable().optional(),
 });
 
 export type CommitInput = z.infer<typeof commitSchema>;
@@ -126,10 +129,24 @@ export async function commitImport(input: CommitInput): Promise<CommitResult> {
     })
     .returning({ id: schema.imports.id });
 
+  // Dökümdeki hesap sahibinin adı geçen işlemler kendi hesaplarınız arası transferdir (ör. FAST ...-AD SOYAD-)
+  const categories = await getCategories(user.id);
+  const catByName = new Map(categories.map((c) => [c.name, c.id]));
+  const transferCat = catByName.get("Hesaplar Arası Transfer");
+  const holder = data.holderName ? holderPattern(data.holderName) : null;
+  if (transferCat && holder) {
+    await db()
+      .insert(schema.categoryRules)
+      .values({ userId: user.id, pattern: holder, categoryId: transferCat, source: "auto" })
+      .onConflictDoNothing();
+  }
+
   const rules = await getRules(user.id);
   let categorized = 0;
   const values = toInsert.map((t) => {
-    const categoryId = categorize(t.description, rules);
+    // Önce kurallar, eşleşmezse bankanın kendi etiketi
+    const fromLabel = categoryFromBankLabel(t.label);
+    const categoryId = categorize(t.description, rules) ?? (fromLabel ? (catByName.get(fromLabel) ?? null) : null);
     if (categoryId) categorized++;
     return {
       userId: user.id,

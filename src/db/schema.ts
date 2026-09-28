@@ -32,6 +32,8 @@ export type ColumnMapping = {
   debit?: number;
   credit?: number;
   balance?: number;
+  // Bankanın kendi kategori/etiket sütunu (Garanti'de "Etiket")
+  label?: number;
   invertSign: boolean;
 };
 

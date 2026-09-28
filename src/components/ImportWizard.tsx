@@ -104,7 +104,44 @@ type Payload = {
   balanceAnchor: { date: string; amount: number } | null;
   mapping: ColumnMapping | null;
   statement: { statementDate: string; dueDate: string; totalDue: number; minDue: number } | null;
+  holderName: string | null;
 };
+
+function completeStatement(s: StatementSummary): Payload["statement"] {
+  return s.statementDate && s.dueDate && s.totalDue !== null && s.minDue !== null
+    ? { statementDate: s.statementDate, dueDate: s.dueDate, totalDue: s.totalDue, minDue: s.minDue }
+    : null;
+}
+
+// Kart ekstresinin özet alanları: dosyadan okunur, elle düzeltilebilir
+function StatementFields({ summary, onChange }: { summary: StatementSummary; onChange: (s: StatementSummary) => void }) {
+  const num = (v: string) => {
+    const n = Number(v.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) && v.trim() !== "" ? n : null;
+  };
+  return (
+    <div className="mb-4">
+      <div className="mb-2 text-sm font-medium">Ekstre özeti</div>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Field label="Hesap kesim tarihi">
+          <Input type="date" value={summary.statementDate ?? ""} onChange={(e) => onChange({ ...summary, statementDate: e.target.value || null })} />
+        </Field>
+        <Field label="Son ödeme tarihi">
+          <Input type="date" value={summary.dueDate ?? ""} onChange={(e) => onChange({ ...summary, dueDate: e.target.value || null })} />
+        </Field>
+        <Field label="Dönem borcu (₺)">
+          <Input inputMode="decimal" defaultValue={summary.totalDue?.toString().replace(".", ",") ?? ""} onChange={(e) => onChange({ ...summary, totalDue: num(e.target.value) })} />
+        </Field>
+        <Field label="Asgari ödeme (₺)" hint="0 ise ekstre ödenmiş sayılır">
+          <Input inputMode="decimal" defaultValue={summary.minDue?.toString().replace(".", ",") ?? ""} onChange={(e) => onChange({ ...summary, minDue: num(e.target.value) })} />
+        </Field>
+      </div>
+      <p className="mt-1 text-xs text-muted">
+        Dönem içi hareket dosyalarında (ekstre kesilmemiş) bu alanları boş bırakın.
+      </p>
+    </div>
+  );
+}
 
 function TxTable({ txs }: { txs: Payload["transactions"] }) {
   const shown = txs.slice(0, 200);
@@ -158,13 +195,14 @@ function TablePreview({
 }) {
   const initial: ColumnMapping = preview.mapping ?? { headerRow: 0, date: 0, description: 1, amount: 2, invertSign: isCard };
   const [m, setM] = useState<ColumnMapping>(initial);
+  const [summary, setSummary] = useState<StatementSummary>(preview.summary);
   const header = preview.rows[m.headerRow] ?? [];
   const width = Math.max(...preview.rows.slice(0, 50).map((r) => r.length), 0);
   const cols = Array.from({ length: width }, (_, i) => ({ i, label: `${i + 1}. sütun${header[i] ? ` – ${String(header[i]).slice(0, 30)}` : ""}` }));
   const result = useMemo(() => applyMapping(preview.rows, m), [preview.rows, m]);
   const twoCols = m.amount === undefined;
 
-  const colSelect = (key: "date" | "description" | "amount" | "debit" | "credit" | "balance", optional = false) => (
+  const colSelect = (key: "date" | "description" | "amount" | "debit" | "credit" | "balance" | "label", optional = false) => (
     <Select
       value={m[key] ?? ""}
       onChange={(e) => setM({ ...m, [key]: e.target.value === "" ? undefined : Number(e.target.value) })}
@@ -178,6 +216,7 @@ function TablePreview({
 
   return (
     <Card title="2. Sütunları kontrol edin">
+      {isCard && <StatementFields summary={summary} onChange={setSummary} />}
       {!preview.mapping && (
         <p className="mb-3 text-sm text-warn">Başlık satırı otomatik bulunamadı; sütunları elle seçin.</p>
       )}
@@ -209,6 +248,7 @@ function TablePreview({
           <Field label="Tutar">{colSelect("amount")}</Field>
         )}
         <Field label="Bakiye (isteğe bağlı)" hint="Varsa hesap bakiyesi buradan alınır">{colSelect("balance", true)}</Field>
+        <Field label="Banka etiketi (isteğe bağlı)" hint="Kural eşleşmezse kategori buradan tahmin edilir">{colSelect("label", true)}</Field>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={m.invertSign} onChange={(e) => setM({ ...m, invertSign: e.target.checked })} />
           İşaretleri ters çevir
@@ -217,7 +257,10 @@ function TablePreview({
       </div>
       <Summary txs={result.transactions} />
       {result.skippedRows > 0 && <p className="text-xs text-muted">{result.skippedRows} satır tarih/tutar içermediği için atlandı (başlık, toplam vb.).</p>}
-      {result.balanceAnchor && (
+      {preview.holderName && (
+        <p className="text-sm text-muted">Hesap sahibi: {preview.holderName} · bu adın geçtiği işlemler &quot;Hesaplar Arası Transfer&quot; sayılacak.</p>
+      )}
+      {!isCard && result.balanceAnchor && (
         <p className="text-sm text-muted">Son bakiye: {formatTr(result.balanceAnchor.date)} itibarıyla {tl(result.balanceAnchor.amount)}</p>
       )}
       <div className="mt-3">
@@ -226,7 +269,15 @@ function TablePreview({
       <Button
         className="mt-4"
         disabled={pending || result.transactions.length === 0}
-        onClick={() => onCommit({ transactions: result.transactions, balanceAnchor: result.balanceAnchor, mapping: m, statement: null })}
+        onClick={() =>
+          onCommit({
+            transactions: result.transactions,
+            balanceAnchor: isCard ? null : result.balanceAnchor,
+            mapping: m,
+            statement: isCard ? completeStatement(summary) : null,
+            holderName: preview.holderName,
+          })
+        }
       >
         {pending ? "Kaydediliyor…" : `${result.transactions.length} işlemi kaydet`}
       </Button>
@@ -251,30 +302,11 @@ function PdfPreview({
     () => preview.transactions.map((t) => ({ ...t, amount: invert ? -t.amount : t.amount })),
     [preview.transactions, invert],
   );
-  const statementComplete = summary.statementDate && summary.dueDate && summary.totalDue !== null && summary.minDue !== null;
-  const num = (v: string) => {
-    const n = Number(v.replace(/\./g, "").replace(",", "."));
-    return Number.isFinite(n) && v.trim() !== "" ? n : null;
-  };
+  const statement = isCard ? completeStatement(summary) : null;
 
   return (
     <Card title="2. PDF'ten okunanları kontrol edin">
-      {isCard && (
-        <div className="mb-4 grid gap-3 sm:grid-cols-4">
-          <Field label="Hesap kesim tarihi">
-            <Input type="date" value={summary.statementDate ?? ""} onChange={(e) => setSummary({ ...summary, statementDate: e.target.value || null })} />
-          </Field>
-          <Field label="Son ödeme tarihi">
-            <Input type="date" value={summary.dueDate ?? ""} onChange={(e) => setSummary({ ...summary, dueDate: e.target.value || null })} />
-          </Field>
-          <Field label="Dönem borcu (₺)">
-            <Input inputMode="decimal" defaultValue={summary.totalDue?.toString().replace(".", ",") ?? ""} onChange={(e) => setSummary({ ...summary, totalDue: num(e.target.value) })} />
-          </Field>
-          <Field label="Asgari ödeme (₺)">
-            <Input inputMode="decimal" defaultValue={summary.minDue?.toString().replace(".", ",") ?? ""} onChange={(e) => setSummary({ ...summary, minDue: num(e.target.value) })} />
-          </Field>
-        </div>
-      )}
+      {isCard && <StatementFields summary={summary} onChange={setSummary} />}
       <label className="mb-3 flex items-center gap-2 text-sm">
         <input type="checkbox" checked={invert} onChange={(e) => setInvert(e.target.checked)} />
         İşaretleri ters çevir <span className="text-xs text-muted">(harcamalar eksi görünmeli)</span>
@@ -294,15 +326,14 @@ function PdfPreview({
       </details>
       <Button
         className="mt-4"
-        disabled={pending || (txs.length === 0 && !statementComplete)}
+        disabled={pending || (txs.length === 0 && !statement)}
         onClick={() =>
           onCommit({
             transactions: txs,
             balanceAnchor: null,
             mapping: null,
-            statement: isCard && statementComplete
-              ? { statementDate: summary.statementDate!, dueDate: summary.dueDate!, totalDue: summary.totalDue!, minDue: summary.minDue! }
-              : null,
+            statement,
+            holderName: null,
           })
         }
       >
