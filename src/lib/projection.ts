@@ -67,7 +67,7 @@ export type ProjEvent = {
   date: ISODate;
   label: string;
   amount: number;
-  kind: "recurring" | "loan" | "card" | "kmh" | "spend";
+  kind: "recurring" | "loan" | "card" | "kmh" | "spend" | "receivable";
   category: string;
   accountId: string;
 };
@@ -96,6 +96,8 @@ export type ProjectionInput = {
   cards: CardInput[];
   recurring: RecurringInput[];
   loans: LoanInput[];
+  // Tarihi belli kişisel alacak (in) / borçlar (out); tarihsizler projeksiyona girmez
+  receivables?: { name: string; amount: number; direction: "in" | "out"; expectedDate: ISODate; accountId: string | null }[];
 };
 
 export function expandRecurring(r: RecurringInput, from: ISODate, to: ISODate): ISODate[] {
@@ -195,6 +197,19 @@ export function project(input: ProjectionInput): ProjectionResult {
         accountId: acc(r.accountId),
       });
     }
+  }
+  for (const r of input.receivables ?? []) {
+    // Tarihi geçmiş ama henüz "geldi" işaretlenmemiş alacak yarın gelecekmiş gibi sayılır
+    const date = r.expectedDate > today ? r.expectedDate : addDays(today, 1);
+    if (date > horizon) continue;
+    events.push({
+      date,
+      label: r.direction === "in" ? `Beklenen alacak: ${r.name}` : `Ödenecek borç: ${r.name}`,
+      amount: r.direction === "in" ? r.amount : -r.amount,
+      kind: "receivable",
+      category: r.direction === "in" ? "Alacak tahsilatı" : "Kişisel borç ödemesi",
+      accountId: acc(r.accountId),
+    });
   }
   for (const l of input.loans) {
     const day = Number(l.nextPaymentDate.slice(8, 10));

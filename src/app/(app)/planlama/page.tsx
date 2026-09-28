@@ -1,9 +1,17 @@
 import { asc, eq } from "drizzle-orm";
-import { deleteLoan, deleteRecurring, saveLoan, saveRecurring } from "@/app/actions/planning";
+import {
+  deleteLoan,
+  deleteReceivable,
+  deleteRecurring,
+  saveLoan,
+  saveReceivable,
+  saveRecurring,
+  settleReceivable,
+} from "@/app/actions/planning";
 import { Button, Card, Empty, Field, Input, Money, PageHeader, Select } from "@/components/ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { getAccounts, getCategories } from "@/lib/data";
+import { getAccounts, getCategories, getOpenReceivables } from "@/lib/data";
 import { addMonths, formatTr, todayIso } from "@/lib/dates";
 import { toNum } from "@/lib/money";
 
@@ -13,11 +21,12 @@ const LOAN_KIND: Record<string, string> = { konut: "Konut", ihtiyac: "İhtiyaç"
 
 export default async function PlanningPage() {
   const user = await requireUser();
-  const [accounts, categories, recurring, loans] = await Promise.all([
+  const [accounts, categories, recurring, loans, receivables] = await Promise.all([
     getAccounts(user.id),
     getCategories(user.id),
     db().select().from(schema.recurringItems).where(eq(schema.recurringItems.userId, user.id)).orderBy(asc(schema.recurringItems.direction), asc(schema.recurringItems.name)),
     db().select().from(schema.loans).where(eq(schema.loans.userId, user.id)).orderBy(asc(schema.loans.nextPaymentDate)),
+    getOpenReceivables(user.id),
   ]);
   const checking = accounts.filter((a) => a.type === "checking");
   const today = todayIso();
@@ -29,6 +38,26 @@ export default async function PlanningPage() {
       <option value="">İlk vadesiz hesap</option>
       {checking.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
     </Select>
+  );
+
+  const receivableFields = (r?: (typeof receivables)[number]) => (
+    <>
+      <Field label="Kimden / kime"><Input name="name" required placeholder="ör. Ahmet" defaultValue={r?.name} /></Field>
+      <Field label="Tür">
+        <Select name="direction" defaultValue={r?.direction ?? "in"}>
+          <option value="in">Alacak (bana gelecek)</option>
+          <option value="out">Borç (ben ödeyeceğim)</option>
+        </Select>
+      </Field>
+      <Field label="Tutar (₺)">
+        <Input name="amount" inputMode="decimal" required defaultValue={r ? String(toNum(r.amount)).replace(".", ",") : undefined} />
+      </Field>
+      <Field label="Beklenen tarih" hint="Bilmiyorsanız boş bırakın">
+        <Input name="expectedDate" type="date" defaultValue={r?.expectedDate ?? undefined} />
+      </Field>
+      <Field label="Hesap">{accountSelect(r?.accountId)}</Field>
+      <Field label="Not" className="sm:col-span-2"><Input name="note" defaultValue={r?.note ?? ""} /></Field>
+    </>
   );
 
   // Yeni ekleme ve düzenleme formlarının ortak alanları
@@ -188,6 +217,53 @@ export default async function PlanningPage() {
         <p className="mt-3 text-xs text-muted">
           Sıradaki taksit tarihi geçtiyse projeksiyon o taksiti ödenmiş sayar; ara ara bu tarihi ve kalan sayıyı güncelleyin.
         </p>
+      </Card>
+
+      <Card title="Alacaklar & kişisel borçlar" className="mt-8">
+        <p className="mb-3 text-sm text-muted">
+          Birinden alacağınız ya da birine ödeyeceğiniz para. Tarihi biliniyorsa projeksiyona o gün eklenir; tarihi boş
+          bırakırsanız projeksiyona girmez, Projeksiyon sayfasında &quot;tarihi belirsiz&quot; olarak ayrıca gösterilir.
+        </p>
+        <form action={saveReceivable} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {receivableFields()}
+          <div className="flex items-end"><Button>Ekle</Button></div>
+        </form>
+        {receivables.length > 0 && (
+          <div className="mt-4 grid gap-3">
+            {receivables.map((r) => (
+              <details key={r.id} className="rounded-lg border border-line p-3">
+                <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-medium">
+                    {r.name}{" "}
+                    <span className="text-xs font-normal text-muted">
+                      {r.direction === "in" ? "alacak" : "borç"} ·{" "}
+                      {r.expectedDate ? `beklenen tarih ${formatTr(r.expectedDate)}` : "tarihi belirsiz"}
+                      {r.note ? ` · ${r.note}` : ""}
+                    </span>
+                  </span>
+                  <Money value={r.direction === "in" ? toNum(r.amount) : -toNum(r.amount)} signed />
+                </summary>
+                <form action={saveReceivable} className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <input type="hidden" name="id" value={r.id} />
+                  {receivableFields(r)}
+                  <div className="flex items-end"><Button>Kaydet</Button></div>
+                </form>
+                <div className="mt-2 flex gap-2">
+                  <form action={settleReceivable}>
+                    <input type="hidden" name="id" value={r.id} />
+                    <Button variant="ghost" title="Para geldi / ödendi: beklenenlerden çıkar">
+                      {r.direction === "in" ? "Geldi" : "Ödendi"}
+                    </Button>
+                  </form>
+                  <form action={deleteReceivable}>
+                    <input type="hidden" name="id" value={r.id} />
+                    <Button variant="danger">Sil</Button>
+                  </form>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
       </Card>
     </>
   );

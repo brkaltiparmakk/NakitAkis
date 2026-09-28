@@ -4,11 +4,11 @@ import { Card, Empty, Money, PageHeader, Stat, cx } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { projectionInput } from "@/lib/data";
 import { addMonths, formatTr, todayIso } from "@/lib/dates";
-import { round2 } from "@/lib/money";
+import { round2, toNum } from "@/lib/money";
 import { project } from "@/lib/projection";
 
 const HORIZONS = [3, 6, 12, 24];
-const KIND_LABEL = { recurring: "Düzenli", loan: "Kredi", card: "Kart", kmh: "KMH", spend: "Harcama" } as const;
+const KIND_LABEL = { recurring: "Düzenli", loan: "Kredi", card: "Kart", kmh: "KMH", spend: "Harcama", receivable: "Alacak/Borç" } as const;
 
 export default async function ProjectionPage({ searchParams }: { searchParams: Promise<{ ay?: string }> }) {
   const user = await requireUser();
@@ -20,6 +20,9 @@ export default async function ProjectionPage({ searchParams }: { searchParams: P
   const current = round2(input.checking.reduce((a, c) => a + c.balance, 0));
   const end = result.days[result.days.length - 1]?.total ?? current;
   const series = [{ date: today, total: current }, ...result.days.map((d) => ({ date: d.date, total: d.total }))];
+  const undatedNet = round2(
+    input.undatedReceivables.reduce((a, r) => a + (r.direction === "in" ? toNum(r.amount) : -toNum(r.amount)), 0),
+  );
 
   let running = current;
   const rows = result.events.map((e) => {
@@ -72,6 +75,26 @@ export default async function ProjectionPage({ searchParams }: { searchParams: P
           <Card title="Toplam nakit (vadesiz hesaplar)" className="mb-6">
             <BalanceChart data={series} />
           </Card>
+
+          {undatedNet !== 0 && (
+            <Card title="Tarihi belirsiz alacak / borçlar" className="mb-6" actions={<Link href="/planlama" className="text-xs text-accent">Düzenle →</Link>}>
+              <ul className="mb-3 divide-y divide-line text-sm">
+                {input.undatedReceivables.map((r) => (
+                  <li key={r.id} className="flex justify-between gap-2 py-2">
+                    <span>
+                      {r.name} <span className="text-muted">({r.direction === "in" ? "alacak" : "borç"})</span>
+                    </span>
+                    <Money value={r.direction === "in" ? toNum(r.amount) : -toNum(r.amount)} signed />
+                  </li>
+                ))}
+              </ul>
+              <p className="text-sm text-muted">
+                Bunlar projeksiyona dahil değil. {months} ay içinde gerçekleşirse dönem sonu bakiyesi{" "}
+                <Money value={round2(end + undatedNet)} className="font-semibold text-fg" /> olur. Tarih netleşince
+                Düzenli &amp; Krediler sayfasından beklenen tarihi girin.
+              </p>
+            </Card>
+          )}
 
           {result.cards.length > 0 && (
             <Card title="Kart ekstre döngüleri" className="mb-6">

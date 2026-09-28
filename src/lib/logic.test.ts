@@ -248,3 +248,25 @@ describe("median spending with two months", () => {
     expect(averageMonthlySpend(txs, "2026-09-28", { includeUncategorized: false })).toBe(2000);
   });
 });
+
+describe("receivables in projection", () => {
+  it("adds dated receivables and moves overdue ones to tomorrow", () => {
+    const r = project({
+      today: "2026-09-28",
+      horizon: "2026-12-31",
+      checking: [{ id: "a", name: "Vadesiz", balance: 0, kmhMonthlyRate: 0 }],
+      cards: [],
+      recurring: [],
+      loans: [],
+      receivables: [
+        { name: "Ahmet", amount: 90000, direction: "in", expectedDate: "2026-11-15", accountId: null },
+        { name: "Mehmet", amount: 5000, direction: "out", expectedDate: "2026-09-01", accountId: null },
+        { name: "Uzak", amount: 1000, direction: "in", expectedDate: "2027-03-01", accountId: null },
+      ],
+    });
+    expect(r.events.map((e) => [e.date, e.kind, e.amount])).toEqual([
+      ["2026-09-29", "receivable", -5000],
+      ["2026-11-15", "receivable", 90000],
+    ]);
+  });
+});

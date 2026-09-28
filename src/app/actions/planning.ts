@@ -79,3 +79,45 @@ export async function deleteLoan(f: FormData) {
     .where(and(eq(schema.loans.id, str(f, "id")), eq(schema.loans.userId, user.id)));
   revalidatePath("/", "layout");
 }
+
+export async function saveReceivable(f: FormData) {
+  const user = await requireUser();
+  const amount = money(f, "amount");
+  if (amount === null) return;
+  const values = {
+    name: str(f, "name") || "Alacak",
+    direction: str(f, "direction") === "out" ? "out" : "in",
+    amount: Math.abs(Number(amount)).toFixed(2),
+    expectedDate: isoDate(f, "expectedDate"),
+    accountId: optStr(f, "accountId"),
+    note: optStr(f, "note"),
+  };
+  const id = optStr(f, "id");
+  if (id) {
+    await db()
+      .update(schema.receivables)
+      .set(values)
+      .where(and(eq(schema.receivables.id, id), eq(schema.receivables.userId, user.id)));
+  } else {
+    await db().insert(schema.receivables).values({ ...values, userId: user.id });
+  }
+  revalidatePath("/", "layout");
+}
+
+// "Geldi / ödendi": para zaten banka dökümüyle gireceği için kayıt beklenenlerden çıkarılır
+export async function settleReceivable(f: FormData) {
+  const user = await requireUser();
+  await db()
+    .update(schema.receivables)
+    .set({ settled: true })
+    .where(and(eq(schema.receivables.id, str(f, "id")), eq(schema.receivables.userId, user.id)));
+  revalidatePath("/", "layout");
+}
+
+export async function deleteReceivable(f: FormData) {
+  const user = await requireUser();
+  await db()
+    .delete(schema.receivables)
+    .where(and(eq(schema.receivables.id, str(f, "id")), eq(schema.receivables.userId, user.id)));
+  revalidatePath("/", "layout");
+}

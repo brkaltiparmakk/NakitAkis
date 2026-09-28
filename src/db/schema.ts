@@ -197,7 +197,24 @@ export const loans = pgTable("loans", {
   note: text("note"),
 });
 
+// Kişisel alacak/borçlar: tarihi biliniyorsa projeksiyona girer, bilinmiyorsa ayrıca gösterilir
+export const receivables = pgTable("receivables", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  direction: text("direction").notNull(), // in: alacak (bana gelecek) | out: borç (ben ödeyeceğim)
+  amount: money("amount").notNull(),
+  expectedDate: date("expected_date"),
+  accountId: uuid("account_id").references(() => accounts.id, { onDelete: "set null" }),
+  note: text("note"),
+  settled: boolean("settled").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Account = typeof accounts.$inferSelect;
+export type Receivable = typeof receivables.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type RecurringItem = typeof recurringItems.$inferSelect;

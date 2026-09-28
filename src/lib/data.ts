@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { Account } from "@/db/schema";
+import type { Account, Receivable } from "@/db/schema";
 import { balanceAt, type Flow } from "@/lib/cashflow";
 import { INTERNAL_TRANSFER } from "@/lib/categorize";
 import { addDays, type ISODate } from "@/lib/dates";
@@ -120,12 +120,25 @@ export async function snapshot(userId: string, today: ISODate) {
   return { accounts, checking, cards, txs };
 }
 
-export async function projectionInput(userId: string, today: ISODate, horizon: ISODate): Promise<ProjectionInput & { snap: Awaited<ReturnType<typeof snapshot>> }> {
+export async function getOpenReceivables(userId: string) {
+  return db()
+    .select()
+    .from(schema.receivables)
+    .where(and(eq(schema.receivables.userId, userId), eq(schema.receivables.settled, false)))
+    .orderBy(asc(schema.receivables.expectedDate), asc(schema.receivables.createdAt));
+}
+
+export async function projectionInput(
+  userId: string,
+  today: ISODate,
+  horizon: ISODate,
+): Promise<ProjectionInput & { snap: Awaited<ReturnType<typeof snapshot>>; undatedReceivables: Receivable[] }> {
   const snap = await snapshot(userId, today);
-  const [recurring, loans, categories] = await Promise.all([
+  const [recurring, loans, categories, receivables] = await Promise.all([
     db().select().from(schema.recurringItems).where(and(eq(schema.recurringItems.userId, userId), eq(schema.recurringItems.active, true))),
     db().select().from(schema.loans).where(eq(schema.loans.userId, userId)),
     getCategories(userId),
+    getOpenReceivables(userId),
   ]);
   const catName = new Map(categories.map((c) => [c.id, c.name]));
 
@@ -176,6 +189,16 @@ export async function projectionInput(userId: string, today: ISODate, horizon: I
       remainingInstallments: l.remainingInstallments,
       accountId: l.accountId,
     })),
+    receivables: receivables
+      .filter((r) => r.expectedDate)
+      .map((r) => ({
+        name: r.name,
+        amount: toNum(r.amount),
+        direction: r.direction === "out" ? "out" : "in",
+        expectedDate: r.expectedDate!,
+        accountId: r.accountId,
+      })),
+    undatedReceivables: receivables.filter((r) => !r.expectedDate),
   };
 }
 
