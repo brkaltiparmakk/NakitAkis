@@ -3,7 +3,7 @@ import { balanceAt, buildBuckets, type Flow, type Granularity } from "@/lib/cash
 import { anchorOf, checkingFlows, projectionInput } from "@/lib/data";
 import { addDays, addMonths, diffDays, startOfMonth, todayIso } from "@/lib/dates";
 import { parseDate } from "@/lib/import/normalize";
-import { round2 } from "@/lib/money";
+import { round2, toNum } from "@/lib/money";
 import { project } from "@/lib/projection";
 
 export const VIEWS: Record<string, Granularity> = { gunluk: "daily", haftalik: "weekly", aylik: "monthly" };
@@ -43,5 +43,9 @@ export async function cashflowTable(userId: string, sp: Record<string, string | 
   const buckets = buildBuckets({ start, end, granularity: g, opening, flows: [...actual, ...projected], today });
   const inCats = [...new Set(buckets.flatMap((b) => Object.keys(b.inflows)))].sort();
   const outCats = [...new Set(buckets.flatMap((b) => Object.keys(b.outflows)))].sort();
-  return { viewKey, start, end, clamped, hasAccounts: accounts.length > 0, buckets, inCats, outCats };
+  // Tarihi belirsiz alacak/borçlar tabloya girmez; "gelirse dönem sonu" satırı için net toplamları döner
+  const undatedNet = round2(
+    input.undatedReceivables.reduce((a, r) => a + (r.direction === "in" ? toNum(r.amount) : -toNum(r.amount)), 0),
+  );
+  return { viewKey, start, end, clamped, hasAccounts: accounts.length > 0, buckets, inCats, outCats, undatedNet };
 }

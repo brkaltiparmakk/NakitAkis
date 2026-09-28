@@ -8,7 +8,7 @@ import { tl } from "@/lib/money";
 export default async function CashflowPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const { viewKey, start, end, clamped, hasAccounts, buckets, inCats, outCats } = await cashflowTable(user.id, sp);
+  const { viewKey, start, end, clamped, hasAccounts, buckets, inCats, outCats, undatedNet } = await cashflowTable(user.id, sp);
   const excelHref = `/nakit-akis/excel?${new URLSearchParams({ gorunum: viewKey, baslangic: start, bitis: end })}`;
   const cell = (v: number | undefined) => (v ? tl(v) : "–");
 
@@ -78,6 +78,15 @@ export default async function CashflowPage({ searchParams }: { searchParams: Pro
                 )}
                 <Row label="Net akış" strong buckets={buckets} value={(b) => tl(b.net)} neg={(b) => b.net < 0} />
                 <Row label="Dönem sonu bakiye" strong buckets={buckets} value={(b) => tl(b.closing)} neg={(b) => b.closing < 0} />
+                {undatedNet !== 0 && (
+                  <Row
+                    label="Dönem sonu (alacaklar gelirse)"
+                    buckets={buckets}
+                    value={(b) => (b.projected ? tl(b.closing + undatedNet) : "–")}
+                    neg={(b) => b.projected && b.closing + undatedNet < 0}
+                    className="text-muted"
+                  />
+                )}
               </tbody>
             </table>
           </div>

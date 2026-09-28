@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { BalanceChart, IncomeExpenseChart } from "@/components/Charts";
-import { Card, Empty, Money, PageHeader, Stat } from "@/components/ui";
+import { AltLine, Card, Empty, Money, PageHeader, Stat } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { analysisRows, projectionInput } from "@/lib/data";
 import { addDays, addMonths, formatTr, monthLabel, startOfMonth, todayIso } from "@/lib/dates";
-import { round2 } from "@/lib/money";
+import { round2, toNum } from "@/lib/money";
 import { project } from "@/lib/projection";
 
 export default async function Dashboard() {
@@ -32,6 +32,10 @@ export default async function Dashboard() {
   const result = project(input);
   const cash = round2(input.checking.reduce((a, c) => a + c.balance, 0));
   const in30 = result.days.find((d) => d.date === addDays(today, 30))?.total ?? cash;
+  // Tarihi belirsiz alacak/borçların net toplamı: ana rakamlara girmez, "gelirse" satırında gösterilir
+  const undatedNet = round2(
+    input.undatedReceivables.reduce((a, r) => a + (r.direction === "in" ? toNum(r.amount) : -toNum(r.amount)), 0),
+  );
   const cardDebt = round2(snap.cards.reduce((a, c) => a + (c.latest?.totalDue ?? 0) + c.unbilledSpend, 0));
   const upcoming = result.events.filter((e) => e.date <= addDays(today, 30) && e.amount < 0 && e.kind !== "spend").slice(0, 12);
 
@@ -63,18 +67,35 @@ export default async function Dashboard() {
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Toplam nakit" value={<Money value={cash} />} tone={cash < 0 ? "neg" : undefined} hint={`${input.checking.length} vadesiz hesap`} />
         <Stat label="Kart borçları" value={<Money value={cardDebt} />} hint="Son ekstre + dönem içi harcama" />
-        <Stat label="30 gün sonra nakit" value={<Money value={in30} />} tone={in30 < 0 ? "neg" : undefined} hint="Tahmini" />
+        <Stat
+          label="30 gün sonra nakit"
+          value={<Money value={in30} />}
+          tone={in30 < 0 ? "neg" : undefined}
+          hint={
+            <>
+              Tahmini
+              {undatedNet !== 0 && <AltLine value={in30 + undatedNet} />}
+            </>
+          }
+        />
         <Stat
           label="90 günde en düşük"
           value={result.lowest ? <Money value={result.lowest.total} /> : "—"}
           tone={result.lowest && result.lowest.total < 0 ? "neg" : undefined}
-          hint={result.lowest ? formatTr(result.lowest.date) : undefined}
+          hint={
+            result.lowest ? (
+              <>
+                {formatTr(result.lowest.date)}
+                {undatedNet !== 0 && <AltLine value={result.lowest.total + undatedNet} />}
+              </>
+            ) : undefined
+          }
         />
       </div>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-3">
         <Card title="Önümüzdeki 90 gün: toplam nakit" className="lg:col-span-2" actions={<Link href="/projeksiyon" className="text-xs text-accent">Ayrıntı →</Link>}>
-          <BalanceChart data={[{ date: today, total: cash }, ...result.days]} height={240} />
+          <BalanceChart data={[{ date: today, total: cash }, ...result.days]} height={240} altOffset={undatedNet} />
         </Card>
         <Card title="Yaklaşan ödemeler (30 gün)">
           {upcoming.length === 0 ? (

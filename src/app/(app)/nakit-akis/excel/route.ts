@@ -6,7 +6,7 @@ import { xlsxResponse } from "@/lib/excel";
 export async function GET(req: NextRequest) {
   const user = await requireUser();
   const sp = Object.fromEntries(req.nextUrl.searchParams);
-  const { start, end, buckets, inCats, outCats } = await cashflowTable(user.id, sp);
+  const { start, end, buckets, inCats, outCats, undatedNet } = await cashflowTable(user.id, sp);
 
   const row = (label: string, f: (b: (typeof buckets)[number]) => number | null) => [label, ...buckets.map(f)];
   const rows: (string | number | null)[][] = [
@@ -21,6 +21,9 @@ export async function GET(req: NextRequest) {
   ];
   if (buckets.some((b) => b.internalNet !== 0)) rows.push(row("Kendi hesaplarım arası (net)", (b) => b.internalNet || null));
   rows.push(row("Net akış", (b) => b.net), row("Dönem sonu bakiye", (b) => b.closing));
+  if (undatedNet !== 0) {
+    rows.push(row("Dönem sonu (alacaklar gelirse)", (b) => (b.projected ? Math.round((b.closing + undatedNet) * 100) / 100 : null)));
+  }
 
   return xlsxResponse(`nakit-akis_${start}_${end}.xlsx`, "Nakit Akış", rows, [32, ...buckets.map(() => 16)]);
 }

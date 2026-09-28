@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BalanceChart } from "@/components/Charts";
-import { Card, Empty, Money, PageHeader, Stat, cx } from "@/components/ui";
+import { AltLine, Card, Empty, Money, PageHeader, Stat, cx } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { projectionInput } from "@/lib/data";
 import { addMonths, formatTr, todayIso } from "@/lib/dates";
@@ -58,12 +58,29 @@ export default async function ProjectionPage({ searchParams }: { searchParams: P
         <>
           <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="Bugünkü nakit" value={<Money value={current} />} tone={current < 0 ? "neg" : undefined} />
-            <Stat label={`${months} ay sonra`} value={<Money value={end} />} tone={end < 0 ? "neg" : undefined} hint={`Değişim: ${new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", signDisplay: "always" }).format(end - current)}`} />
+            <Stat
+              label={`${months} ay sonra`}
+              value={<Money value={end} />}
+              tone={end < 0 ? "neg" : undefined}
+              hint={
+                <>
+                  Değişim: {new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", signDisplay: "always" }).format(end - current)}
+                  {undatedNet !== 0 && <AltLine value={end + undatedNet} />}
+                </>
+              }
+            />
             <Stat
               label="En düşük bakiye"
               value={result.lowest ? <Money value={result.lowest.total} /> : "—"}
               tone={result.lowest && result.lowest.total < 0 ? "neg" : undefined}
-              hint={result.lowest ? formatTr(result.lowest.date) : undefined}
+              hint={
+                result.lowest ? (
+                  <>
+                    {formatTr(result.lowest.date)}
+                    {undatedNet !== 0 && <AltLine value={result.lowest.total + undatedNet} />}
+                  </>
+                ) : undefined
+              }
             />
             <Stat
               label="Dönem sonu kart borcu"
@@ -73,7 +90,12 @@ export default async function ProjectionPage({ searchParams }: { searchParams: P
           </div>
 
           <Card title="Toplam nakit (vadesiz hesaplar)" className="mb-6">
-            <BalanceChart data={series} />
+            <BalanceChart data={series} altOffset={undatedNet} />
+            {undatedNet !== 0 && (
+              <p className="mt-2 text-xs text-muted">
+                Kesikli çizgi: tarihi belirsiz alacak/borçların bugün gerçekleştiği varsayımıyla bakiye.
+              </p>
+            )}
           </Card>
 
           {undatedNet !== 0 && (

@@ -28,9 +28,21 @@ const tooltipStyle = {
   labelStyle: { color: "var(--color-muted)", marginBottom: 4 },
 };
 
-// Tek seri: toplam nakit bakiyesi (vadesiz hesaplar) zamana göre
-export function BalanceChart({ data, height = 280 }: { data: { date: string; total: number }[]; height?: number }) {
+// Toplam nakit bakiyesi (vadesiz hesaplar) zamana göre. altOffset verilirse, tarihi belirsiz alacakların
+// bugün gelmiş sayıldığı ikinci (kesikli) seri de çizilir.
+export function BalanceChart({
+  data: base,
+  height = 280,
+  altOffset = 0,
+}: {
+  data: { date: string; total: number }[];
+  height?: number;
+  altOffset?: number;
+}) {
+  const withAlt = altOffset !== 0;
+  const data = withAlt ? base.map((d) => ({ ...d, alt: Math.round((d.total + altOffset) * 100) / 100 })) : base;
   const hasNegative = data.some((d) => d.total < 0);
+  const names: Record<string, string> = { total: "Toplam nakit", alt: "Alacaklar gelirse" };
   return (
     <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
@@ -48,9 +60,27 @@ export function BalanceChart({ data, height = 280 }: { data: { date: string; tot
           {...tooltipStyle}
           cursor={{ stroke: "var(--color-axis)", strokeWidth: 1 }}
           labelFormatter={(d) => formatTr(String(d))}
-          formatter={(v) => [tl(Number(v)), "Toplam nakit"]}
+          formatter={(v, key) => [tl(Number(v)), names[String(key)] ?? String(key)]}
         />
+        {withAlt && (
+          <Legend
+            wrapperStyle={{ fontSize: 12, color: "var(--color-muted)" }}
+            formatter={(key) => names[String(key)] ?? String(key)}
+            iconType="plainline"
+          />
+        )}
         <Area type="stepAfter" dataKey="total" stroke="var(--color-series-1)" strokeWidth={2} fill="url(#balFill)" activeDot={{ r: 4 }} />
+        {withAlt && (
+          <Area
+            type="stepAfter"
+            dataKey="alt"
+            stroke="var(--color-series-2)"
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            fill="none"
+            activeDot={{ r: 4 }}
+          />
+        )}
       </AreaChart>
     </ResponsiveContainer>
   );

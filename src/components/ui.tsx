@@ -49,6 +49,15 @@ export function Money({ value, signed, className }: { value: number; signed?: bo
   );
 }
 
+// Tarihi belirsiz alacaklar gerçekleşirse bir rakamın ne olacağını gösteren ikinci satır
+export function AltLine({ value }: { value: number }) {
+  return (
+    <span className="mt-1 block font-medium text-fg">
+      Alacaklar gelirse: {tl(Math.round(value * 100) / 100)}
+    </span>
+  );
+}
+
 export function Button({ variant = "primary", className, ...props }: ComponentProps<"button"> & { variant?: "primary" | "ghost" | "danger" }) {
   return (
     <button
